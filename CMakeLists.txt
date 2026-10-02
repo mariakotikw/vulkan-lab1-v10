@@ -3,7 +3,9 @@ include(FetchContent)
 
 project(vulkan-starter-app LANGUAGES C CXX)
 
-add_executable(${PROJECT_NAME} source/main.cpp source/graphics_internal.cpp source/application.cpp)
+add_executable(${PROJECT_NAME}
+	source/main.cpp source/graphics_internal.cpp source/application.cpp
+	source/graphics.cpp source/dodecahedron.cpp)
 
 if(LINUX)
 	target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
@@ -48,6 +50,15 @@ FetchContent_Declare(
 	GIT_TAG v1.92.9
 )
 
+FetchContent_Declare(
+	glm
+	GIT_REPOSITORY https://github.com/g-truc/glm.git
+	GIT_TAG 1.0.3
+	GIT_SHALLOW TRUE
+)
+set(GLM_BUILD_LIBRARY OFF CACHE BOOL "Use header-only GLM" FORCE)
+set(GLM_BUILD_TESTS OFF CACHE BOOL "Disable dependency tests" FORCE)
+
 find_package(Vulkan REQUIRED)
 
 set(GLFW_LIBRARY_TYPE STATIC)
@@ -60,6 +71,7 @@ FetchContent_MakeAvailable(
 	vk-bootstrap
 	VulkanMemoryAllocator
 	imgui
+	glm
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -67,6 +79,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 	Vulkan::Vulkan
 	vk-bootstrap::vk-bootstrap
 	GPUOpen::VulkanMemoryAllocator
+	glm::glm
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
@@ -81,7 +94,7 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 
 # Compile shaders
-find_program(GLSLC_FOUND glslc)
+find_program(GLSLC_FOUND glslc REQUIRED)
 if(GLSLC_FOUND)
 	set(_SHADER_BINARIES)
 
@@ -92,9 +105,10 @@ if(GLSLC_FOUND)
 
 		add_custom_command(
 			OUTPUT ${SHADER_BINARY_PATH}
-			COMMAND glslc ${SHADER_SOURCE} -o ${SHADER_BINARY_PATH}
+			COMMAND ${GLSLC_FOUND} ${SHADER_SOURCE} -o ${SHADER_BINARY_PATH}
 			DEPENDS ${SHADER_SOURCE}
 			COMMENT "Compiling ${SHADER_FILE} shader"
+			VERBATIM
 		)
 
 		list(APPEND _SHADER_BINARIES ${SHADER_BINARY_PATH})
@@ -103,9 +117,18 @@ if(GLSLC_FOUND)
 	# To compile shader file, use compile_shader function with a file name
 	# of a shader inside shaders directory. See example below:
 
-	# compile_shader(example.vert)
-	# compile_shader(example.frag)
+	compile_shader(dodecahedron.vert)
+	compile_shader(dodecahedron.frag)
 
 	add_custom_target(shaders DEPENDS ${_SHADER_BINARIES})
 	add_dependencies(${PROJECT_NAME} shaders)
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+	add_executable(dodecahedron-tests tests/dodecahedron_tests.cpp source/dodecahedron.cpp)
+	target_include_directories(dodecahedron-tests PRIVATE source)
+	target_link_libraries(dodecahedron-tests PRIVATE glm::glm)
+	target_compile_features(dodecahedron-tests PRIVATE cxx_std_20)
+	add_test(NAME dodecahedron-geometry COMMAND dodecahedron-tests)
 endif()

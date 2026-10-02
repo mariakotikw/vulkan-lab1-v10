@@ -82,17 +82,18 @@ int main() {
 			glfwWaitEvents();
 			continue;
 		}
-		ImGui_ImplGlfw_NewFrame();
-
-		ImGui::NewFrame();
-		application::update(time);
-		ImGui::Render();
-
+		// Wait for the previous GPU read before update() writes the shared UBO.
+		// prepare() also resolves resize, so update() sees the current extent.
 		graphics::internal::FrameData fd = graphics::internal::prepare();
 		if (fd.command_buffer == VK_NULL_HANDLE) {
 			status = glfwWindowShouldClose(glfw_window) ? EXIT_SUCCESS : EXIT_FAILURE;
 			break;
 		}
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+		application::update(time);
+		ImGui::Render();
+
 		application::render(fd);
 		graphics::internal::submitAndPresent();
 	}
