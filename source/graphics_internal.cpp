@@ -25,6 +25,8 @@ namespace graphics::internal {
 
 namespace {
 
+GLFWwindow* glfw_window;
+
 VkInstance vk_instance;
 uint32_t vk_api_version;
 VkSurfaceKHR vk_surface;
@@ -244,6 +246,18 @@ void drawImGUI() {
 }
 
 bool rebuildSwapchain(uint32_t width, uint32_t height) {
+	int framebuffer_width, framebuffer_height;
+	glfwGetFramebufferSize(glfw_window, &framebuffer_width, &framebuffer_height);
+	while (framebuffer_width == 0 || framebuffer_height == 0) {
+		if (glfwWindowShouldClose(glfw_window)) {
+			return false;
+		}
+		glfwWaitEvents();
+		glfwGetFramebufferSize(glfw_window, &framebuffer_width, &framebuffer_height);
+	}
+	width = uint32_t(framebuffer_width);
+	height = uint32_t(framebuffer_height);
+
 	vkQueueWaitIdle(context.graphics_queue);
 
 	vkb::SwapchainBuilder sb(context.physical_device, context.device, vk_surface,
@@ -257,6 +271,7 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 					   .build();
 	if (!sb_result) {
 		std::cerr << sb_result.error().message() << '\n';
+		return false;
 	}
 
 	auto vkb_swapchain = sb_result.value();
@@ -387,6 +402,7 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 Context context;
 
 bool initialize(GLFWwindow* const window) {
+	glfw_window = window;
 	vkb::InstanceBuilder ib;
 
 	auto ibr = ib.require_api_version(VK_MAKE_VERSION(1, 1, 0))
@@ -568,12 +584,31 @@ bool initialize(GLFWwindow* const window) {
 		.pDepthStencilAttachment = &render_pass_depth_attachment,
 	};
 
+	// Match the acquire wait stage so the automatic color transition waits for the image.
+	const VkSubpassDependency render_pass_dependency = {
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+						VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+						VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+						VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+						VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+						 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+						 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+						 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+	};
+
 	const VkRenderPassCreateInfo render_pass = {
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 		.attachmentCount = sizeof(render_pass_attachments) / sizeof(render_pass_attachments[0]),
 		.pAttachments = render_pass_attachments,
 		.subpassCount = 1,
 		.pSubpasses = &render_pass_subpass,
+		.dependencyCount = 1,
+		.pDependencies = &render_pass_dependency,
 	};
 
 	if (vkCreateRenderPass(context.device, &render_pass, nullptr, &context.render_pass) != VK_SUCCESS) {
@@ -730,7 +765,9 @@ retry_acquire:
 		break;
 
 	case VK_ERROR_OUT_OF_DATE_KHR:
-		rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
+		if (!rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height)) {
+			return {};
+		}
 		goto retry_acquire;
 
 	case VK_SUBOPTIMAL_KHR:
@@ -786,7 +823,7 @@ void submitAndPresent() {
 	    result == VK_SUBOPTIMAL_KHR ||
 	    vk_swapchain_resize_require) {
 		rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
-	} else {
+	} else if (result != VK_SUCCESS) {
 		std::cerr << "Failed to present Vulkan swapchain image\n";
 	}
 }

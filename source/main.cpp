@@ -76,6 +76,12 @@ int main() {
 		const double time = glfwGetTime();
 
 		glfwPollEvents();
+		int framebuffer_width, framebuffer_height;
+		glfwGetFramebufferSize(glfw_window, &framebuffer_width, &framebuffer_height);
+		if (framebuffer_width == 0 || framebuffer_height == 0) {
+			glfwWaitEvents();
+			continue;
+		}
 		ImGui_ImplGlfw_NewFrame();
 
 		ImGui::NewFrame();
@@ -83,6 +89,10 @@ int main() {
 		ImGui::Render();
 
 		graphics::internal::FrameData fd = graphics::internal::prepare();
+		if (fd.command_buffer == VK_NULL_HANDLE) {
+			status = glfwWindowShouldClose(glfw_window) ? EXIT_SUCCESS : EXIT_FAILURE;
+			break;
+		}
 		application::render(fd);
 		graphics::internal::submitAndPresent();
 	}
@@ -99,5 +109,5 @@ err_imgui_init:
 err_null_window:
 	glfwTerminate();
 
-	return 0;
+	return status;
 }
