@@ -6,9 +6,10 @@ layout(location = 0) out vec3 vertexColor;
 
 layout(set = 0, binding = 0, std140) uniform Transform {
     mat4 mvp;
+    vec4 userColor;
 } transform;
 
 void main() {
     gl_Position = transform.mvp * vec4(position, 1.0);
-    vertexColor = color;
+    vertexColor = color * transform.userColor.rgb;
 }

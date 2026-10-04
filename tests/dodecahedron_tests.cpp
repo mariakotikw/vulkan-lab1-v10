@@ -32,6 +32,17 @@ int main() {
 		}
 		const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f;
 		const float edge_length = 2.0f / phi;
+		for (size_t i = 0; i < mesh.vertices.size(); ++i) {
+			const auto& vertex = mesh.vertices[i];
+			for (int channel = 0; channel < 3; ++channel) {
+				require(vertex.color[channel] >= 0 && vertex.color[channel] <= 1, "Vertex color outside RGB bounds");
+				require(close(vertex.color[channel], 0.5f + vertex.position[channel] / (2.0f * phi)),
+				        "Vertex color does not follow local coordinates");
+			}
+			for (size_t j = 0; j < i; ++j) {
+				require(glm::length(vertex.color - mesh.vertices[j].color) > tolerance, "Procedural colors are not distinct");
+			}
+		}
 		std::map<std::pair<uint32_t, uint32_t>, unsigned> edge_uses;
 		std::map<std::pair<uint32_t, uint32_t>, int> edge_orientations;
 		std::set<std::array<uint32_t, 5>> unique_faces;
@@ -87,7 +98,7 @@ int main() {
 		}
 		require(close(triangle_area, polygon_area), "Triangulation does not cover the complete surface");
 		std::cout << "PASS: 20 unique vertices, 12 regular pentagons, 30 shared edges, "
-		             "36 outward triangles; closed convex surface\n";
+		             "36 outward triangles; closed convex surface; 20 distinct procedural RGB colors\n";
 		return 0;
 	} catch (const std::exception& error) {
 		std::cerr << "FAIL: " << error.what() << '\n';

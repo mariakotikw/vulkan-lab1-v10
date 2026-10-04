@@ -1,10 +1,11 @@
 #include "application.hpp"
+#include "application_state.hpp"
 #include "dodecahedron.hpp"
 #include "graphics.hpp"
 
 #include <imgui.h>
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <algorithm>
 
 #include <cstddef>
 #include <fstream>
@@ -14,16 +15,20 @@
 #include <type_traits>
 #include <vector>
 
+#ifdef LAB1_ENABLE_UI_TEST_HOOKS
+#include "ui_observer.hpp"
+#define LAB1_OBSERVE_ITEM(name) ui_observer::item(name)
+#else
+#define LAB1_OBSERVE_ITEM(name) ((void)0)
+#endif
+
 namespace application {
 
 namespace {
 
-struct alignas(16) TransformUniform {
-	glm::mat4 mvp;
-};
-static_assert(sizeof(TransformUniform) == 64);
-static_assert(alignof(TransformUniform) >= 16);
 static_assert(std::is_standard_layout_v<geometry::Vertex>);
+
+ControlsState controls;
 
 graphics::Buffer vertex_buffer;
 graphics::Buffer index_buffer;
@@ -207,6 +212,77 @@ void createPipeline() {
 	      "vkCreateGraphicsPipelines");
 }
 
+void drawControls() {
+	const auto display = ImGui::GetIO().DisplaySize;
+	ImGui::SetNextWindowPos(ImVec2(std::max(8.0f, display.x - 376.0f), 16.0f));
+	ImGui::SetNextWindowSize(ImVec2(360.0f, std::min(560.0f, display.y - 32.0f)));
+	const auto flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
+	if (ImGui::Begin("Lab 1 Controls", nullptr, flags)) {
+		if (ImGui::CollapsingHeader("Projection", ImGuiTreeNodeFlags_DefaultOpen)) {
+			if (ImGui::RadioButton("Perspective", controls.projection == Projection::Perspective)) {
+				controls.projection = Projection::Perspective;
+			}
+			LAB1_OBSERVE_ITEM("perspective");
+			ImGui::SameLine();
+			if (ImGui::RadioButton("Orthographic", controls.projection == Projection::Orthographic)) {
+				controls.projection = Projection::Orthographic;
+			}
+			LAB1_OBSERVE_ITEM("orthographic");
+			if (controls.projection == Projection::Perspective) {
+				ImGui::SliderFloat("FOV", &controls.fov_degrees, 15.0f, 90.0f, "%.1f deg", ImGuiSliderFlags_AlwaysClamp);
+				LAB1_OBSERVE_ITEM("fov");
+			} else {
+				ImGui::DragFloat("Half height", &controls.ortho_half_height, 0.02f, 1.0f, 8.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+				LAB1_OBSERVE_ITEM("ortho_height");
+			}
+		}
+		if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGui::TextUnformatted("Position X / Y / Z");
+			ImGui::SetNextItemWidth(-1);
+			ImGui::DragFloat3("##position", glm::value_ptr(controls.transform.position), 0.02f);
+			LAB1_OBSERVE_ITEM("position");
+			ImGui::TextUnformatted("Rotation X / Y / Z (degrees)");
+			ImGui::SetNextItemWidth(-1);
+			ImGui::DragFloat3("##rotation", glm::value_ptr(controls.transform.rotation_degrees), 0.5f);
+			LAB1_OBSERVE_ITEM("rotation");
+			ImGui::TextUnformatted("Scale X / Y / Z");
+			ImGui::SetNextItemWidth(-1);
+			ImGui::DragFloat3("##scale", glm::value_ptr(controls.transform.scale), 0.01f,
+			                  0.05f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+			LAB1_OBSERVE_ITEM("scale");
+			if (ImGui::Button("Reset Transform")) controls.resetTransform();
+			LAB1_OBSERVE_ITEM("reset_transform");
+		}
+		if (ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen)) {
+			if (ImGui::Button(controls.animation.playing ? "Pause" : "Play", ImVec2(64, 0))) {
+				controls.animation.playing = !controls.animation.playing;
+			}
+			LAB1_OBSERVE_ITEM("play_pause");
+			ImGui::SameLine();
+			if (ImGui::Button("Reset Animation")) controls.animation.reset();
+			LAB1_OBSERVE_ITEM("reset_animation");
+			ImGui::SetNextItemWidth(180);
+			ImGui::DragFloat("Speed", &controls.animation.speed, 0.02f, 0.1f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+			LAB1_OBSERVE_ITEM("speed");
+			ImGui::SetNextItemWidth(180);
+			ImGui::DragFloat("Radius", &controls.animation.radius, 0.01f, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+			LAB1_OBSERVE_ITEM("radius");
+			ImGui::SetNextItemWidth(180);
+			ImGui::DragFloat("Vertical amplitude", &controls.animation.vertical_amplitude, 0.01f, 0.0f, 1.5f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+			LAB1_OBSERVE_ITEM("amplitude");
+			ImGui::TextWrapped("Position is the base offset; animation adds motion and rotation.");
+		}
+		if (ImGui::CollapsingHeader("Color", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGui::TextUnformatted("Vertex color multiplier (RGB)");
+			ImGui::SetNextItemWidth(-1);
+			ImGui::ColorEdit3("##tint", glm::value_ptr(controls.user_color), ImGuiColorEditFlags_Float);
+			LAB1_OBSERVE_ITEM("color");
+			ImGui::TextWrapped("White keeps the procedural vertex colors.");
+		}
+	}
+	ImGui::End();
+}
+
 } // namespace
 
 bool initialize() {
@@ -246,23 +322,21 @@ void shutdown() {
 	graphics::destroyBuffer(vertex_buffer);
 }
 
-void update([[maybe_unused]] double time) {
+void update(double time) {
+#ifdef LAB1_ENABLE_UI_TEST_HOOKS
+	ui_observer::beginFrame();
+#endif
+	controls.animation.advance(time);
+	drawControls();
+	controls.sanitize();
 	const auto extent = graphics::internal::context.swapchain_extent;
 	const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-	glm::mat4 model = glm::rotate(glm::mat4(1), glm::radians(5.0f), glm::vec3(1, 0, 0));
-	model = glm::rotate(model, glm::radians(10.0f), glm::vec3(0, 1, 0));
-	const glm::mat4 view = glm::lookAtRH(glm::vec3(3.5f), glm::vec3(0), glm::vec3(0, 1, 0));
-	glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(45.0f), aspect, 0.1f, 100.0f);
-	// Vulkan uses depth [0,1]; its positive viewport height points Y downward.
-	projection[1][1] *= -1.0f;
-	const TransformUniform uniform = { projection * view * model };
+	const TransformUniform uniform = { controls.mvpMatrix(aspect), glm::vec4(controls.user_color, 1.0f) };
 	// main calls prepare() first, so the previous GPU read has completed.
 	graphics::writeBuffer(uniform_buffer, &uniform, sizeof(uniform));
-
-	// Demo supplies its own SetNextWindow defaults; keep it beside the model on resize.
-	ImGui::SetWindowPos("Dear ImGui Demo", ImVec2(ImGui::GetIO().DisplaySize.x - 340, 20));
-	ImGui::SetWindowSize("Dear ImGui Demo", ImVec2(320, 450));
-	ImGui::ShowDemoWindow();
+#ifdef LAB1_ENABLE_UI_TEST_HOOKS
+	ui_observer::frame(controls, uniform, time);
+#endif
 }
 
 void render(const graphics::internal::FrameData& fd) {

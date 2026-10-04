@@ -5,7 +5,7 @@ project(vulkan-starter-app LANGUAGES C CXX)
 
 add_executable(${PROJECT_NAME}
 	source/main.cpp source/graphics_internal.cpp source/application.cpp
-	source/graphics.cpp source/dodecahedron.cpp)
+	source/graphics.cpp source/dodecahedron.cpp source/application_state.cpp)
 
 if(LINUX)
 	target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
@@ -124,6 +124,13 @@ if(GLSLC_FOUND)
 	add_dependencies(${PROJECT_NAME} shaders)
 endif()
 
+option(LAB1_ENABLE_UI_TEST_HOOKS "Observe ImGui rectangles and uniforms for desktop tests" OFF)
+if(LAB1_ENABLE_UI_TEST_HOOKS)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE LAB1_ENABLE_UI_TEST_HOOKS)
+	target_include_directories(${PROJECT_NAME} PRIVATE tests source)
+	target_sources(${PROJECT_NAME} PRIVATE tests/ui_observer.cpp)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
 	add_executable(dodecahedron-tests tests/dodecahedron_tests.cpp source/dodecahedron.cpp)
@@ -131,4 +138,9 @@ if(BUILD_TESTING)
 	target_link_libraries(dodecahedron-tests PRIVATE glm::glm)
 	target_compile_features(dodecahedron-tests PRIVATE cxx_std_20)
 	add_test(NAME dodecahedron-geometry COMMAND dodecahedron-tests)
+	add_executable(application-state-tests tests/application_state_tests.cpp source/application_state.cpp)
+	target_include_directories(application-state-tests PRIVATE source)
+	target_link_libraries(application-state-tests PRIVATE glm::glm)
+	target_compile_features(application-state-tests PRIVATE cxx_std_20)
+	add_test(NAME application-controls COMMAND application-state-tests)
 endif()

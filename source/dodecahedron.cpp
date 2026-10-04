@@ -19,13 +19,11 @@ Dodecahedron makeDodecahedron() {
 		{ -phi, 0, -inv_phi }, { -phi, 0, inv_phi },
 		{ phi, 0, -inv_phi }, { phi, 0, inv_phi },
 	}};
-	const std::array<glm::vec3, 5> palette = {{
-		{ 0.02f, 0.15f, 0.95f }, { 0.01f, 0.7f, 0.25f }, { 0.65f, 0.02f, 0.95f },
-		{ 1.0f, 0.06f, 0.01f }, { 1.0f, 0.65f, 0.0f },
-	}};
 	Dodecahedron mesh{};
 	for (size_t i = 0; i < positions.size(); ++i) {
-		mesh.vertices[i] = { positions[i], palette[i % palette.size()] };
+		// Map the local coordinate bounds [-phi, phi] to RGB [0,1].
+		const glm::vec3 color = (positions[i] / phi + glm::vec3(1.0f)) * 0.5f;
+		mesh.vertices[i] = { positions[i], color };
 	}
 	// Counterclockwise when each pentagon is viewed from outside the solid.
 	mesh.faces = {{

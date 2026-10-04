@@ -1,7 +1,10 @@
 # Лабораторная работа №1, вариант 10
 
-Базовая реализация правильного додекаэдра на C++20 и Vulkan. Дополнительные задания 1–6 не реализованы.
+Правильный додекаэдр на C++20 и Vulkan с дополнительными заданиями 1–5.
+Дополнительное задание №6 не реализовано. Управление находится в одном окне `Lab 1 Controls`.
 Стабильный starter с исправленной валидацией сохранён коммитом `19a2084` в ветке `lab1-v10`.
+Базовая лабораторная сохранена отдельным коммитом `36cbd01` перед дополнительными заданиями.
+Описание управления, анимации и автоматических проверок: [LAB1_EXTRAS.md](LAB1_EXTRAS.md).
 
 ## Геометрия
 
@@ -15,7 +18,8 @@
 Для этих координат задан список 12 пятиугольников с обходом против часовой стрелки при взгляде снаружи.
 Каждый выпуклый пятиугольник разбит веером `(0,1,2)`, `(0,2,3)`, `(0,3,4)`.
 Итого **20 вершин, 12 граней, 36 треугольников, 108 индексов uint32_t**, без дублирования вершин.
-Структура `Vertex` содержит `glm::vec3 position` и `glm::vec3 color`; цвета интерполируются между вершинами.
+Структура `Vertex` содержит `glm::vec3 position` и `glm::vec3 color`.
+RGB вычисляется из локальной позиции как `(position / phi + 1) * 0.5` и интерполируется между вершинами.
 
 Тест `dodecahedron-geometry` проверяет уникальность вершин, общую описанную сферу, планарность,
 равенство сторон и внутренних углов 108°, выпуклость, 30 рёбер с двумя смежными гранями,
@@ -30,12 +34,14 @@ descriptor set layout, descriptor pool/set, pipeline layout и graphics pipeline
 Остальные ресурсы уничтожаются в `application::shutdown()` после ожидания graphics queue,
 до уничтожения VMA allocator. Частично созданные ресурсы также очищаются при ошибке initialize.
 
-UBO содержит `alignas(16)` структуру с одной 64-байтовой `glm::mat4`.
+UBO содержит 80-байтовую `alignas(16)` структуру: `glm::mat4` по смещению 0 и
+`glm::vec4 user_color` по смещению 64. Размер и смещения проверяются `static_assert`.
 Descriptor set 0, binding 0 имеет тип `UNIFORM_BUFFER` и доступен vertex shader;
 GLSL объявляет ту же матрицу через `std140`. Матрица передаётся как `projection * view * model`.
-Model задаёт фиксированные повороты 5° вокруг X и 10° вокруг Y;
-камера `(3.5,3.5,3.5)` смотрит в начало координат. Перспектива 45°, near=0.1, far=100.
-Используется GLM `perspectiveRH_ZO` с глубиной [0,1] и инверсией Y для положительной высоты Vulkan viewport.
+Model строится из ручных Position/Rotation/Scale и добавочного движения/вращения анимации.
+Исходные повороты — 5° вокруг X и 10° вокруг Y; анимация изначально на паузе.
+Камера `(3.5,3.5,3.5)` смотрит в начало координат. Исходный FOV 45°, near=0.1, far=100.
+GLM `perspectiveRH_ZO` и `orthoRH_ZO` используют глубину [0,1] и инверсию Y для Vulkan viewport.
 Aspect ratio вычисляется из текущего `swapchain_extent` после обработки resize.
 
 В `main.cpp` существующий `prepare()` перенесён перед `update()`: ожидание fence предыдущего кадра
@@ -46,7 +52,7 @@ Pipeline использует triangle list, back-face culling, `COUNTER_CLOCKWI
 и существующий render pass/depth buffer. Viewport и scissor динамические.
 В `render()` сохранены reset/begin/end command buffer и начало/конец существующего render pass;
 добавлены bind pipeline, vertex/index buffers, descriptor set и `vkCmdDrawIndexed(108, ...)`.
-ImGui demo остаётся отдельным существующим проходом; новых элементов управления не добавлено.
+Окно `Lab 1 Controls` использует отдельный существующий проход ImGui.
 `graphics_internal.cpp` и публичный интерфейс application не изменены.
 
 ## Сборка и запуск в настроенном Windows-окружении
@@ -83,7 +89,7 @@ CMake скачивает закреплённую GLM 1.0.3 и компилир�
 результаты проверки: `.tools/logs/verification.json`; screenshot: `.tools/logs/starter-window.png`.
 Артефакты стабильной базы сохранены отдельно в `.tools/logs/stable-19a2084/`.
 
-## Результат выполненной проверки
+## Историческая проверка базовой версии
 
 Проверено 2 октября 2026 года на Windows, Intel UHD Graphics, Vulkan SDK **1.4.363.0**:
 
@@ -101,7 +107,8 @@ CMake скачивает закреплённую GLM 1.0.3 и компилир�
 Созданы: `source/dodecahedron.cpp/.hpp`, `source/graphics.cpp/.hpp`,
 `shaders/dodecahedron.vert`, `shaders/dodecahedron.frag`, `tests/dodecahedron_tests.cpp`, `LAB1.md`.
 Изменены: `source/application.cpp`, `source/main.cpp`, `CMakeLists.txt`.
-Реализация лабораторной оставлена как рабочие изменения поверх стабильного коммита `19a2084`.
+Эта базовая реализация теперь сохранена коммитом `36cbd01`.
+Результаты текущей версии с заданиями 1–5 приведены в [LAB1_EXTRAS.md](LAB1_EXTRAS.md).
 
 Документация зависимостей: [GLM](https://github.com/g-truc/glm/releases/tag/1.0.3),
 [VMA mapped memory](https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/memory_mapping.html),
