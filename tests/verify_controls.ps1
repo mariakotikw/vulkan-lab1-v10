@@ -1,7 +1,5 @@
-# Run a build configured with -DLAB1_ENABLE_UI_TEST_HOOKS=ON on the Windows desktop.
-# Uses real mouse/keyboard input; the optional C++ observer only reports state.
 . (Join-Path (Split-Path -Parent $PSScriptRoot) '.tools\environment.ps1')
-$testLogs = Join-Path $workspaceRoot '.tools\logs\extras'
+$testLogs = Join-Path $workspaceRoot '.tools\logs\task6'
 New-Item -ItemType Directory -Path $testLogs -Force | Out-Null
 if (Test-Path -LiteralPath (Join-Path $testLogs 'result.json')) {
     Remove-Item -LiteralPath (Join-Path $testLogs 'result.json')
@@ -154,7 +152,7 @@ function Screenshot([string]$Name) {
 }
 
 function Resize-Window([int]$Width, [int]$Height) {
-    if (-not [LabUiNative]::SetWindowPos($process.MainWindowHandle, [IntPtr]::Zero, 30, 30, $Width, $Height, 0x14)) { throw 'Window resize failed.' }
+    if (-not [LabUiNative]::SetWindowPos($process.MainWindowHandle, [IntPtr]::Zero, 0, 0, $Width, $Height, 0x14)) { throw 'Window resize failed.' }
     Start-Sleep -Milliseconds 650
 }
 
@@ -166,6 +164,20 @@ try {
     $baseline = Read-State
     $snapshots.baseline = $baseline
     Check ($baseline.projection -eq 'Perspective' -and -not $baseline.playing) 'Default perspective and paused animation'
+    Check ($baseline.objects.Count -ge 2 -and $baseline.draws.Count -eq $baseline.objects.Count) 'Draw loop executes for both objects'
+    Check (@($baseline.draws.descriptorSet | Select-Object -Unique).Count -ge 2) 'Two distinct VkDescriptorSet handles are bound'
+    Check (@($baseline.draws.uniformBuffer | Select-Object -Unique).Count -ge 2) 'Objects use distinct uniform buffers'
+    foreach ($draw in $baseline.draws) {
+        Check ($draw.descriptorUniformBuffer -eq $draw.uniformBuffer -and $draw.indexCount -eq 108) 'Bound descriptor references its own UBO and draws the shared full mesh'
+    }
+    foreach ($resource in @('pipeline', 'vertexBuffer', 'indexBuffer')) {
+        Check (@($baseline.draws.$resource | Select-Object -Unique).Count -eq 1) "Both draws share one $resource"
+    }
+    Check ((Matrix-Difference $baseline.draws[0].uploadedMvp $baseline.draws[1].uploadedMvp) -gt 0.1) 'Mapped GPU uniform memory contains different object MVP matrices'
+    Check (($baseline.draws[0].uploadedColor -join ',') -ne ($baseline.draws[1].uploadedColor -join ',')) 'Mapped GPU uniform memory contains different object colors'
+    for ($i = 0; $i -lt $baseline.objects.Count; ++$i) {
+        Check ((Matrix-Difference $baseline.objects[$i].mvp $baseline.draws[$i].uploadedMvp) -lt 0.0001) "Object $i calculated MVP reaches its own mapped UBO"
+    }
     Screenshot 'perspective.png'
 
     Click-Control 'orthographic'
@@ -191,6 +203,7 @@ try {
         Check ([Math]::Abs($moved.model[12 + $i] - $moved.position[$i]) -lt 0.0001) "Position axis $i reaches model matrix"
     }
     Check ((Matrix-Difference $baseline.mvp $moved.mvp) -gt 0.1) 'Position changes GPU MVP'
+    Check ((Matrix-Difference $baseline.objects[1].mvp $moved.objects[1].mvp) -lt 0.0001) 'Editing Object 1 transform leaves Object 2 unchanged'
     $rotation = @('35', '-25', '60')
     for ($i = 0; $i -lt 3; ++$i) { Set-Number 'rotation' $rotation[$i] $i }
     $rotated = Read-State
@@ -209,7 +222,7 @@ try {
     Check ((Matrix-Difference $reset.model $baseline.model) -lt 0.0001) 'Reset Transform restores the initial model'
     $snapshots.transformed = $scaled
 
-    for ($i = 0; $i -lt 3; ++$i) { Set-Number 'scale' '0.6' $i }
+    for ($i = 0; $i -lt 3; ++$i) { Set-Number 'scale' '0.36' $i }
     Screenshot 'scaled.png'
     Click-Control 'reset_transform'
 
@@ -220,6 +233,7 @@ try {
     $rate1 = ($moving.phase - $start.phase) / ($moving.time - $start.time)
     Check ([Math]::Abs($rate1 - 1) -lt 0.1) 'Animation advances using frame time at speed 1'
     Check ((Matrix-Difference $start.model $moving.model) -gt 0.1) 'Animation moves and rotates the object'
+    Check ((Matrix-Difference $baseline.objects[1].mvp $moving.objects[1].mvp) -lt 0.0001) 'Object 1 animation leaves paused Object 2 unchanged'
     Click-Control 'play_pause'
     $paused = Wait-State { param($s) -not $s.playing } 'paused'
     Start-Sleep -Milliseconds 750
@@ -256,13 +270,39 @@ try {
     for ($i = 0; $i -lt 3; ++$i) { Check ([Math]::Abs($colored.color[$i] - [double]::Parse($tint[$i], [Globalization.CultureInfo]::InvariantCulture)) -lt 0.01) "ColorEdit channel $i input" }
     Check ((Matrix-Difference $colored.mvp $baseline.mvp) -lt 0.0001) 'Color tint changes without changing MVP'
     Screenshot 'tinted.png'
-    for ($i = 0; $i -lt 3; ++$i) { Set-Number 'color' '1.0' $i }
+    Check (($colored.objects[1].color -join ',') -eq ($baseline.objects[1].color -join ',')) 'Object 1 ColorEdit leaves Object 2 color unchanged'
+    for ($i = 0; $i -lt 3; ++$i) { Set-Number 'color' ($baseline.color[$i].ToString([Globalization.CultureInfo]::InvariantCulture)) $i }
     $snapshots.colored = $colored
+
+    Click-Control 'object_2'
+    $second = Wait-State { param($s) $s.selectedObject -eq 1 } 'Object 2 selected'
+    Check (($second.position -join ',') -eq ($baseline.objects[1].position -join ',')) 'Object selection displays its own transform'
+    Set-Number 'position' '1.8' 0
+    $secondMoved = Read-State
+    Check ((Matrix-Difference $secondMoved.objects[1].mvp $second.objects[1].mvp) -gt 0.01 -and (Matrix-Difference $secondMoved.objects[0].mvp $second.objects[0].mvp) -lt 0.0001) 'Object 2 transform affects only its own uniform'
+    Click-Control 'reset_transform'
+    for ($i = 0; $i -lt 3; ++$i) { Set-Number 'color' $tint[$i] $i }
+    $secondColored = Read-State
+    Check (($secondColored.color -join ',') -ne ($second.color -join ',') -and ($secondColored.objects[0].color -join ',') -eq ($second.objects[0].color -join ',')) 'Object 2 ColorEdit affects only its own uniform'
+    Screenshot 'object2-tinted.png'
+    for ($i = 0; $i -lt 3; ++$i) { Set-Number 'color' ($second.color[$i].ToString([Globalization.CultureInfo]::InvariantCulture)) $i }
+    Click-Control 'play_pause'
+    $secondPlaying = Wait-State { param($s) $s.playing -and $s.phase -gt 0.1 } 'Object 2 animation'
+    Check ((Matrix-Difference $secondPlaying.objects[1].mvp $second.objects[1].mvp) -gt 0.01 -and (Matrix-Difference $secondPlaying.objects[0].mvp $second.objects[0].mvp) -lt 0.0001) 'Object 2 animates independently'
+    Click-Control 'object_1'
+    $otherSelected = Wait-State { param($s) $s.selectedObject -eq 0 } 'Object 1 selected while Object 2 plays'
+    Check ((Matrix-Difference $otherSelected.objects[1].mvp $secondPlaying.objects[1].mvp) -gt 0.01) 'Unselected Object 2 continues animation'
+    Click-Control 'object_2'
+    Click-Control 'play_pause'
+    Click-Control 'reset_animation'
+    $snapshots.secondObject = Read-State
+    Click-Control 'object_1'
 
     $beforeResize = Read-State
     Resize-Window 1000 680
     $afterResize = Read-State
     Check ($afterResize.projection -eq 'Perspective' -and $afterResize.display[0] -ne $beforeResize.display[0] -and (Matrix-Difference $beforeResize.mvp $afterResize.mvp) -gt 0.01) 'Perspective projection responds to resize'
+    Screenshot 'resized-perspective.png'
     Resize-Window 1280 720
     Screenshot 'perspective.png'
     Click-Control 'orthographic'
@@ -271,6 +311,7 @@ try {
     Resize-Window 1000 680
     $afterOrthoResize = Read-State
     Check ($afterOrthoResize.projection -eq 'Orthographic' -and $afterOrthoResize.display[0] -ne $beforeOrthoResize.display[0] -and (Matrix-Difference $beforeOrthoResize.mvp $afterOrthoResize.mvp) -gt 0.01) 'Orthographic projection responds to resize'
+    Screenshot 'resized-orthographic.png'
     Resize-Window 1280 720
     $beforeMinimize = Read-State
     [void][LabUiNative]::ShowWindow($process.MainWindowHandle, 6)
@@ -282,6 +323,7 @@ try {
     Screenshot 'orthographic.png'
     Click-Control 'perspective'
     $snapshots.final = Read-State
+    Check ($snapshots.final.draws.Count -eq 2 -and @($snapshots.final.draws.descriptorSet | Select-Object -Unique).Count -eq 2) 'Both descriptor sets remain bound after projection, resize and minimize/restore'
     Screenshot 'perspective.png'
 
     $loaded = @($process.Modules | Select-Object -ExpandProperty ModuleName)
@@ -295,7 +337,7 @@ try {
     Check ($validationLog -match 'CURRENT-VALIDATION-ENABLED' -and $validationLog -match 'Synchronization') 'Core and Synchronization Validation enabled'
     Check ($errorCount -eq 0 -and $warningCount -eq 0) 'Validation ERROR=0, WARNING=0 after every UI interaction'
     Check ($process.ExitCode -eq 0) 'Normal close returns exit code 0'
-    [ordered]@{ passed = $true; checks = $checks.Count; validationErrors = $errorCount; validationWarnings = $warningCount; exitCode = $process.ExitCode; measuredSpeed1 = $rate1; measuredSpeed2 = $rate2; screenshots = @('perspective.png', 'orthographic.png', 'tinted.png', 'scaled.png') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $testLogs 'result.json') -Encoding UTF8
+    [ordered]@{ passed = $true; checks = $checks.Count; objects = $baseline.objects.Count; descriptorSets = @($baseline.draws.descriptorSet | Select-Object -Unique).Count; uniformBuffers = @($baseline.draws.uniformBuffer | Select-Object -Unique).Count; drawsPerFrame = $baseline.draws.Count; validationErrors = $errorCount; validationWarnings = $warningCount; exitCode = $process.ExitCode; measuredSpeed1 = $rate1; measuredSpeed2 = $rate2; screenshots = @('perspective.png', 'orthographic.png', 'tinted.png', 'scaled.png', 'object2-tinted.png') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $testLogs 'result.json') -Encoding UTF8
 } finally {
     $process.Refresh()
     if (-not $process.HasExited) {

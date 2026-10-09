@@ -33,7 +33,6 @@ void writeBuffer(const Buffer& buffer, const void* data, VkDeviceSize size) {
 		throw std::runtime_error("Invalid mapped buffer write");
 	}
 	std::memcpy(buffer.mapped, data, static_cast<size_t>(size));
-	// VMA handles noncoherent atom alignment; coherent memory needs no flush.
 	if (vmaFlushAllocation(internal::context.allocator, buffer.allocation, 0, size) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to flush a mapped buffer");
 	}
@@ -46,4 +45,4 @@ void destroyBuffer(Buffer& buffer) {
 	buffer = {};
 }
 
-} // namespace graphics
+}

@@ -82,8 +82,6 @@ int main() {
 			glfwWaitEvents();
 			continue;
 		}
-		// Wait for the previous GPU read before update() writes the shared UBO.
-		// prepare() also resolves resize, so update() sees the current extent.
 		graphics::internal::FrameData fd = graphics::internal::prepare();
 		if (fd.command_buffer == VK_NULL_HANDLE) {
 			status = glfwWindowShouldClose(glfw_window) ? EXIT_SUCCESS : EXIT_FAILURE;

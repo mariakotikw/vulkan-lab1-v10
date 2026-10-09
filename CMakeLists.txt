@@ -117,6 +117,9 @@ if(GLSLC_FOUND)
 	# To compile shader file, use compile_shader function with a file name
 	# of a shader inside shaders directory. See example below:
 
+	# compile_shader(example.vert)
+	# compile_shader(example.frag)
+
 	compile_shader(dodecahedron.vert)
 	compile_shader(dodecahedron.frag)
 

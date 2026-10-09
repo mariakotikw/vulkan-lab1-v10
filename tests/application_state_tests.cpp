@@ -19,17 +19,18 @@ bool close(const glm::mat4& a, const glm::mat4& b) {
 	return true;
 }
 
-} // namespace
+}
 
 int main() {
 	try {
 		using namespace application;
-		ControlsState state;
+		ObjectState state;
+		ProjectionState camera;
 		const auto default_model = state.modelMatrix();
 		for (const auto projection : { Projection::Perspective, Projection::Orthographic }) {
-			state.projection = projection;
+			camera.projection = projection;
 			for (float aspect : { 0.6f, 1.0f, 16.0f / 9.0f, 2.4f }) {
-				const auto p = state.projectionMatrix(aspect);
+				const auto p = camera.projectionMatrix(aspect);
 				require(p[1][1] < 0, "Missing Vulkan projection Y flip");
 				require(close(std::abs(p[1][1] / p[0][0]), aspect), "Incorrect resize aspect ratio");
 				for (float depth : { 0.1f, 100.0f }) {
@@ -38,8 +39,8 @@ int main() {
 				}
 			}
 		}
-		state.projection = Projection::Perspective;
-		require(close(state.mvpMatrix(1.6f), ControlsState{}.mvpMatrix(1.6f)), "Projection roundtrip changed MVP");
+		camera.projection = Projection::Perspective;
+		require(close(camera.projectionMatrix(1.6f), ProjectionState{}.projectionMatrix(1.6f)), "Projection roundtrip changed MVP");
 		state.transform.rotation_degrees = glm::vec3(0);
 		state.transform.position = { 1, -2, 3 };
 		require(close(glm::vec3(state.modelMatrix() * glm::vec4(0, 0, 0, 1)), state.transform.position),
@@ -91,8 +92,40 @@ int main() {
 		const auto big_radius = a.offset();
 		require(close(big_radius.x, small_radius.x * 2) && close(big_radius.z, small_radius.z * 2), "Radius failed");
 		require(std::abs(big_radius.y) > 0.01f && glm::length(a.rotation()) > 0.01f, "Path is not spatial or rotating");
+
+		SceneState scene;
+		require(scene.objects.size() >= 2, "Scene must contain multiple objects");
+		for (const auto projection : { Projection::Perspective, Projection::Orthographic }) {
+			scene.camera.projection = projection;
+			const auto uniforms = scene.uniforms(16.0f / 9.0f);
+			require(!close(uniforms[0].mvp, uniforms[1].mvp), "Objects share their transform uniform state");
+			require(!close(glm::vec3(uniforms[0].user_color), glm::vec3(uniforms[1].user_color)),
+			        "Objects share their color uniform state");
+		}
+		const auto initial_uniforms = scene.uniforms(1.6f);
+		scene.objects[0].transform.position.x += 0.4f;
+		scene.objects[0].user_color = { 0.2f, 0.8f, 0.3f };
+		const auto edited_uniforms = scene.uniforms(1.6f);
+		require(!close(edited_uniforms[0].mvp, initial_uniforms[0].mvp), "Object edit did not reach its MVP");
+		require(close(edited_uniforms[1].mvp, initial_uniforms[1].mvp)
+		        && close(glm::vec3(edited_uniforms[1].user_color), glm::vec3(initial_uniforms[1].user_color)),
+		        "Editing Object 1 changed Object 2's uniform state");
+		scene.objects[0].resetTransform();
+		require(close(scene.uniforms(1.6f)[0].mvp, initial_uniforms[0].mvp), "Object reset lost its scene placement");
+		scene.advance(0);
+		scene.objects[0].animation.playing = true;
+		scene.advance(1);
+		scene.selected_object = 1;
+		scene.advance(2);
+		require(close(static_cast<float>(scene.objects[0].animation.phase), 2)
+		        && close(static_cast<float>(scene.objects[1].animation.phase), 0),
+		        "Object selection incorrectly changes animation clocks");
+		scene.objects[1].animation.playing = true;
+		scene.advance(2.25);
+		require(close(static_cast<float>(scene.objects[1].animation.phase), 0.25f),
+		        "Starting an unselected object included paused time");
 		std::cout << "PASS: projection/depth/aspect; position; XYZ rotation/scale; reset; "
-		             "animation timing/pause/resume/speed/radius/FPS; std140 layout\n";
+		             "animation timing/pause/resume/speed/radius/FPS; std140 layout; independent per-object uniforms\n";
 		return 0;
 	} catch (const std::exception& error) {
 		std::cerr << "FAIL: " << error.what() << '\n';

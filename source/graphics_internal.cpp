@@ -584,7 +584,6 @@ bool initialize(GLFWwindow* const window) {
 		.pDepthStencilAttachment = &render_pass_depth_attachment,
 	};
 
-	// Match the acquire wait stage so the automatic color transition waits for the image.
 	const VkSubpassDependency render_pass_dependency = {
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
 		.dstSubpass = 0,

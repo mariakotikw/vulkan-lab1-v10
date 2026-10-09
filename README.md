@@ -1,4 +1,44 @@
-# 🌋 Vulkan Starter App
+# Лабораторная №1 — Vulkan, вариант 10
+
+Текущая лабораторная №1, вариант 10, с заданиями 1–6: управление, сборка на Windows
+и результаты проверки описаны в [LAB1.md](LAB1.md).
+
+Два правильных додекаэдра используют общую геометрию и один graphics pipeline,
+но разные descriptor sets и uniform buffers. В ImGui доступны две проекции,
+преобразования, анимация и цвет каждого объекта.
+
+![Два додекаэдра и меню ImGui](docs/screenshots/perspective.png)
+
+## Сборка на Windows с MinGW
+
+Нужны Git, CMake, MinGW с поддержкой C++20, `mingw32-make` и Vulkan SDK с `glslc`.
+Каталоги компилятора, Make и `VULKAN_SDK/Bin` должны быть в `PATH`, а переменная
+`VULKAN_SDK` должна указывать на установленный SDK. Для MinGW рекомендуется путь
+к проекту без кириллицы. Команды выполняются из корня проекта:
+
+```powershell
+git clone https://github.com/mariakotikw/vulkan-lab1-v10.git
+cd vulkan-lab1-v10
+$env:VK_LAYER_PATH = Join-Path $env:VULKAN_SDK 'Bin'
+cmake --preset mingw-debug
+cmake --build build-debug --parallel 4
+.\build-debug\vulkan-starter-app.exe
+```
+
+После изменений кода достаточно повторить сборку; для обычного запуска — последнюю
+команду. Шейдеры компилируются автоматически. Проверки геометрии и состояния:
+
+```powershell
+ctest --test-dir build-debug --output-on-failure
+```
+
+Проверенная конфигурация: GCC 14.1.0, Vulkan SDK 1.4.363.0. Результаты проверки:
+CTest 2/2 PASS, UI 62/62 PASS, Validation Layers 0 ERROR / 0 WARNING, exit code 0.
+Локальная папка `.tools/` и результаты сборки в репозиторий не входят.
+
+Основа — [vulkan-starter-app преподавателя](https://github.com/vladeemerr/vulkan-starter-app),
+лицензия Apache-2.0; исходные `LICENSE` и `NOTICE` сохранены.
+Ниже сохранена инструкция автора starter.
 
 ## Getting started
 

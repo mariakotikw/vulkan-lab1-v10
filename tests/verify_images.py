@@ -1,4 +1,3 @@
-"""Check actual rendered changes after verify_controls.ps1; requires numpy and Pillow."""
 from pathlib import Path
 import json
 
@@ -7,36 +6,56 @@ from PIL import Image
 
 
 def main():
-    root = Path(__file__).resolve().parent.parent / '.tools' / 'logs' / 'extras'
-    snapshots = json.loads((root / 'snapshots.json').read_text(encoding='utf-8-sig'))
-    # Exclude the title bar, borders, and ImGui controls from pixel comparisons.
-    right = int(snapshots['final']['rects']['perspective'][0] - 12)
+    root = Path(__file__).resolve().parent.parent / '.tools' / 'logs' / 'task6'
 
     def figure(name):
-        rgb = np.asarray(Image.open(root / name).convert('RGB'))[50:-16, 16:right]
+        image = np.asarray(Image.open(root / name).convert('RGB'))
+        rgb = image[50:-16, 16:image.shape[1] - 392]
         return rgb, np.max(rgb, axis=2) > 20
 
+    def spans(mask):
+        columns = mask.any(axis=0)
+        boundaries = np.flatnonzero(np.diff(np.r_[False, columns, False]))
+        return list(zip(boundaries[::2], boundaries[1::2]))
+
     base, base_mask = figure('perspective.png')
+    runs = spans(base_mask)
+    if len(runs) != 2:
+        raise SystemExit(f'Expected two separated visible objects, got {runs}')
+    split = int((runs[0][1] + runs[1][0]) // 2)
     tinted, tint_mask = figure('tinted.png')
-    _, scale_mask = figure('scaled.png')
-    base_mean = base[base_mask].mean(axis=0)
-    tint_mean = tinted[tint_mask].mean(axis=0)
-    ratio = float(scale_mask.sum() / base_mask.sum())
-    unique = int(len(np.unique(base[base_mask], axis=0)))
+    second_tinted, second_tint_mask = figure('object2-tinted.png')
+    scaled, scale_mask = figure('scaled.png')
+    left, right = np.s_[:, :split], np.s_[:, split:]
+    base_left_mean = base[left][base_mask[left]].mean(axis=0)
+    tint_left_mean = tinted[left][tint_mask[left]].mean(axis=0)
+    base_right_mean = base[right][base_mask[right]].mean(axis=0)
+    tint_right_mean = second_tinted[right][second_tint_mask[right]].mean(axis=0)
+    ratio = float(scale_mask[left].sum() / base_mask[left].sum())
+    unique = [int(len(np.unique(base[region][base_mask[region]], axis=0))) for region in (left, right)]
     checks = {
-        'rendered_scale_area_ratio': ratio,
-        'rendered_scale_changes_size': 0.15 < ratio < 0.5,
-        'baseline_mean_rgb': base_mean.tolist(),
-        'tinted_mean_rgb': tint_mean.tolist(),
-        'rendered_tint_changes_color': bool(
-            tint_mean[0] < base_mean[0] * 0.7 and tint_mean[2] < base_mean[2] * 0.8),
-        'distinct_surface_rgb_values': unique,
-        'colors_interpolate_on_surface': unique > 1000,
+        'two_visible_separated_objects': len(runs) == 2,
+        'visible_object_column_ranges': [[int(a), int(b)] for a, b in runs],
+        'rendered_scale_area_ratio_object1': ratio,
+        'rendered_scale_changes_object1_size': 0.15 < ratio < 0.5,
+        'object1_scale_leaves_object2_pixels_unchanged': bool(np.array_equal(base[right], scaled[right])),
+        'object1_tint_changes_its_pixels': bool(np.linalg.norm(base_left_mean - tint_left_mean) > 25),
+        'object1_tint_leaves_object2_pixels_unchanged': bool(np.array_equal(base[right], tinted[right])),
+        'object2_tint_changes_its_pixels': bool(np.linalg.norm(base_right_mean - tint_right_mean) > 25),
+        'object2_tint_leaves_object1_pixels_unchanged': bool(np.array_equal(base[left], second_tinted[left])),
+        'different_object_mean_rgb': bool(np.linalg.norm(base_left_mean - base_right_mean) > 30),
+        'distinct_surface_rgb_values_per_object': unique,
+        'procedural_colors_interpolate_on_both_objects': all(count > 1000 for count in unique),
     }
+    for name in ('orthographic.png', 'resized-perspective.png', 'resized-orthographic.png'):
+        _, mask = figure(name)
+        ranges = spans(mask)
+        checks[f'two_complete_objects_in_{name}'] = bool(
+            len(ranges) == 2 and ranges[0][0] > 0 and ranges[-1][1] < mask.shape[1]
+            and not mask[0].any() and not mask[-1].any())
     (root / 'image-checks.json').write_text(json.dumps(checks, indent=2), encoding='utf-8')
     print(json.dumps(checks, indent=2))
-    if not all(checks[key] for key in (
-            'rendered_scale_changes_size', 'rendered_tint_changes_color', 'colors_interpolate_on_surface')):
+    if not all(value for value in checks.values() if isinstance(value, bool)):
         raise SystemExit('Rendered image checks failed')
 
 

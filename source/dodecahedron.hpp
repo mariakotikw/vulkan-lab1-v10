@@ -21,4 +21,4 @@ struct Dodecahedron {
 
 Dodecahedron makeDodecahedron();
 
-} // namespace geometry
+}

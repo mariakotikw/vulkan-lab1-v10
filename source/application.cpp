@@ -28,17 +28,24 @@ namespace {
 
 static_assert(std::is_standard_layout_v<geometry::Vertex>);
 
-ControlsState controls;
+SceneState scene;
 
 graphics::Buffer vertex_buffer;
 graphics::Buffer index_buffer;
-graphics::Buffer uniform_buffer;
+std::array<graphics::Buffer, object_count> object_uniform_buffers;
 VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
 VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+std::array<VkDescriptorSet, object_count> descriptor_sets{};
 VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 VkPipeline pipeline = VK_NULL_HANDLE;
 uint32_t index_count = 0;
+
+VkExtent2D sceneExtent() {
+	const auto extent = graphics::internal::context.swapchain_extent;
+	const float pixels_per_ui_unit = extent.width / std::max(ImGui::GetIO().DisplaySize.x, 1.0f);
+	const auto width = static_cast<uint32_t>(std::max(1.0f, extent.width - 384.0f * pixels_per_ui_unit));
+	return { width, extent.height };
+}
 
 void check(VkResult result, const char* operation) {
 	if (result != VK_SUCCESS) {
@@ -46,7 +53,6 @@ void check(VkResult result, const char* operation) {
 	}
 }
 
-// Temporary modules are destroyed even if pipeline creation fails.
 struct ShaderModule {
 	VkShaderModule handle = VK_NULL_HANDLE;
 	explicit ShaderModule(const char* path) {
@@ -93,35 +99,43 @@ void createDescriptors() {
 	};
 	check(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &descriptor_set_layout),
 	      "vkCreateDescriptorSetLayout");
-	const VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 };
+	const VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, object_count };
 	const VkDescriptorPoolCreateInfo pool_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.maxSets = 1,
+		.maxSets = object_count,
 		.poolSizeCount = 1,
 		.pPoolSizes = &pool_size,
 	};
 	check(vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool), "vkCreateDescriptorPool");
+	std::array<VkDescriptorSetLayout, object_count> layouts;
+	layouts.fill(descriptor_set_layout);
 	const VkDescriptorSetAllocateInfo allocate_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = descriptor_pool,
-		.descriptorSetCount = 1,
-		.pSetLayouts = &descriptor_set_layout,
+		.descriptorSetCount = object_count,
+		.pSetLayouts = layouts.data(),
 	};
-	check(vkAllocateDescriptorSets(device, &allocate_info, &descriptor_set), "vkAllocateDescriptorSets");
-	const VkDescriptorBufferInfo buffer_info = {
-		.buffer = uniform_buffer.handle,
-		.offset = 0,
-		.range = sizeof(TransformUniform),
-	};
-	const VkWriteDescriptorSet write = {
-		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-		.dstSet = descriptor_set,
-		.dstBinding = 0,
-		.descriptorCount = 1,
-		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		.pBufferInfo = &buffer_info,
-	};
-	vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+	check(vkAllocateDescriptorSets(device, &allocate_info, descriptor_sets.data()), "vkAllocateDescriptorSets");
+	for (size_t i = 0; i < descriptor_sets.size(); ++i) {
+		const VkDescriptorBufferInfo buffer_info = {
+			.buffer = object_uniform_buffers[i].handle,
+			.offset = 0,
+			.range = sizeof(TransformUniform),
+		};
+		const VkWriteDescriptorSet write = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = descriptor_sets[i],
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.pBufferInfo = &buffer_info,
+		};
+		vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+#ifdef LAB1_ENABLE_UI_TEST_HOOKS
+		ui_observer::descriptorWrite(reinterpret_cast<uintptr_t>(write.dstSet),
+		                             reinterpret_cast<uintptr_t>(buffer_info.buffer));
+#endif
+	}
 }
 
 void createPipeline() {
@@ -215,24 +229,31 @@ void createPipeline() {
 void drawControls() {
 	const auto display = ImGui::GetIO().DisplaySize;
 	ImGui::SetNextWindowPos(ImVec2(std::max(8.0f, display.x - 376.0f), 16.0f));
-	ImGui::SetNextWindowSize(ImVec2(360.0f, std::min(560.0f, display.y - 32.0f)));
+	ImGui::SetNextWindowSize(ImVec2(360.0f, std::min(600.0f, display.y - 32.0f)));
 	const auto flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
 	if (ImGui::Begin("Lab 1 Controls", nullptr, flags)) {
+		ImGui::RadioButton("Object 1", &scene.selected_object, 0);
+		LAB1_OBSERVE_ITEM("object_1");
+		ImGui::SameLine();
+		ImGui::RadioButton("Object 2", &scene.selected_object, 1);
+		LAB1_OBSERVE_ITEM("object_2");
+		auto& controls = scene.objects[scene.selected_object];
+		auto& camera = scene.camera;
 		if (ImGui::CollapsingHeader("Projection", ImGuiTreeNodeFlags_DefaultOpen)) {
-			if (ImGui::RadioButton("Perspective", controls.projection == Projection::Perspective)) {
-				controls.projection = Projection::Perspective;
+			if (ImGui::RadioButton("Perspective", camera.projection == Projection::Perspective)) {
+				camera.projection = Projection::Perspective;
 			}
 			LAB1_OBSERVE_ITEM("perspective");
 			ImGui::SameLine();
-			if (ImGui::RadioButton("Orthographic", controls.projection == Projection::Orthographic)) {
-				controls.projection = Projection::Orthographic;
+			if (ImGui::RadioButton("Orthographic", camera.projection == Projection::Orthographic)) {
+				camera.projection = Projection::Orthographic;
 			}
 			LAB1_OBSERVE_ITEM("orthographic");
-			if (controls.projection == Projection::Perspective) {
-				ImGui::SliderFloat("FOV", &controls.fov_degrees, 15.0f, 90.0f, "%.1f deg", ImGuiSliderFlags_AlwaysClamp);
+			if (camera.projection == Projection::Perspective) {
+				ImGui::SliderFloat("FOV", &camera.fov_degrees, 15.0f, 90.0f, "%.1f deg", ImGuiSliderFlags_AlwaysClamp);
 				LAB1_OBSERVE_ITEM("fov");
 			} else {
-				ImGui::DragFloat("Half height", &controls.ortho_half_height, 0.02f, 1.0f, 8.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+				ImGui::DragFloat("Half height", &camera.ortho_half_height, 0.02f, 1.0f, 8.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 				LAB1_OBSERVE_ITEM("ortho_height");
 			}
 		}
@@ -283,7 +304,7 @@ void drawControls() {
 	ImGui::End();
 }
 
-} // namespace
+}
 
 bool initialize() {
 	try {
@@ -293,10 +314,19 @@ bool initialize() {
 		index_buffer = graphics::createMappedBuffer(sizeof(mesh.indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 		graphics::writeBuffer(index_buffer, mesh.indices.data(), sizeof(mesh.indices));
 		index_count = static_cast<uint32_t>(mesh.indices.size());
-		uniform_buffer = graphics::createMappedBuffer(sizeof(TransformUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+		for (auto& buffer : object_uniform_buffers) {
+			buffer = graphics::createMappedBuffer(sizeof(TransformUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+		}
 		createDescriptors();
 		createPipeline();
 		std::cout << "Dodecahedron: 20 vertices, 12 pentagons, 36 triangles, 108 indices\n";
+		std::cout << "Scene: objects=" << scene.objects.size() << ", descriptor sets=" << descriptor_sets.size()
+		          << ", uniform buffers=" << object_uniform_buffers.size()
+		          << ", vertex buffers=1, index buffers=1, graphics pipelines=1\n";
+		for (size_t i = 0; i < descriptor_sets.size(); ++i) {
+			std::cout << "Object " << i + 1 << ": descriptor set=" << descriptor_sets[i]
+			          << ", uniform buffer=" << object_uniform_buffers[i].handle << '\n';
+		}
 		return true;
 	} catch (const std::exception& error) {
 		std::cerr << "Application initialization: " << error.what() << '\n';
@@ -316,8 +346,8 @@ void shutdown() {
 	pipeline_layout = VK_NULL_HANDLE;
 	descriptor_pool = VK_NULL_HANDLE;
 	descriptor_set_layout = VK_NULL_HANDLE;
-	descriptor_set = VK_NULL_HANDLE;
-	graphics::destroyBuffer(uniform_buffer);
+	descriptor_sets.fill(VK_NULL_HANDLE);
+	for (auto& buffer : object_uniform_buffers) graphics::destroyBuffer(buffer);
 	graphics::destroyBuffer(index_buffer);
 	graphics::destroyBuffer(vertex_buffer);
 }
@@ -326,21 +356,21 @@ void update(double time) {
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
 	ui_observer::beginFrame();
 #endif
-	controls.animation.advance(time);
+	scene.advance(time);
 	drawControls();
-	controls.sanitize();
-	const auto extent = graphics::internal::context.swapchain_extent;
+	scene.sanitize();
+	const auto extent = sceneExtent();
 	const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-	const TransformUniform uniform = { controls.mvpMatrix(aspect), glm::vec4(controls.user_color, 1.0f) };
-	// main calls prepare() first, so the previous GPU read has completed.
-	graphics::writeBuffer(uniform_buffer, &uniform, sizeof(uniform));
+	const auto uniforms = scene.uniforms(aspect);
+	for (size_t i = 0; i < object_uniform_buffers.size(); ++i) {
+		graphics::writeBuffer(object_uniform_buffers[i], &uniforms[i], sizeof(TransformUniform));
+	}
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
-	ui_observer::frame(controls, uniform, time);
+	ui_observer::state(scene, uniforms, time);
 #endif
 }
 
 void render(const graphics::internal::FrameData& fd) {
-	// prepare() has waited for the previous submission before this buffer is reused.
 	if (vkResetCommandBuffer(fd.command_buffer, 0) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to reset application command buffer");
 	}
@@ -366,29 +396,41 @@ void render(const graphics::internal::FrameData& fd) {
 		.clearValueCount = 2,
 		.pClearValues = clear_values,
 	};
-	// The existing pass clears the attachments and prepares the color image for ImGui.
 	vkCmdBeginRenderPass(fd.command_buffer, &render_pass_begin, VK_SUBPASS_CONTENTS_INLINE);
+	const auto extent = sceneExtent();
 	const VkViewport viewport = {
 		.x = 0, .y = 0,
-		.width = static_cast<float>(context.swapchain_extent.width),
-		.height = static_cast<float>(context.swapchain_extent.height),
+		.width = static_cast<float>(extent.width),
+		.height = static_cast<float>(extent.height),
 		.minDepth = 0, .maxDepth = 1,
 	};
-	const VkRect2D scissor = { .offset = { 0, 0 }, .extent = context.swapchain_extent };
+	const VkRect2D scissor = { .offset = { 0, 0 }, .extent = extent };
 	vkCmdSetViewport(fd.command_buffer, 0, 1, &viewport);
 	vkCmdSetScissor(fd.command_buffer, 0, 1, &scissor);
 	vkCmdBindPipeline(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	const VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &vertex_buffer.handle, &offset);
 	vkCmdBindIndexBuffer(fd.command_buffer, index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-	                        pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
-	vkCmdDrawIndexed(fd.command_buffer, index_count, 1, 0, 0, 0);
+	for (size_t i = 0; i < descriptor_sets.size(); ++i) {
+		vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		                        pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
+		vkCmdDrawIndexed(fd.command_buffer, index_count, 1, 0, 0, 0);
+#ifdef LAB1_ENABLE_UI_TEST_HOOKS
+		ui_observer::draw({ reinterpret_cast<uintptr_t>(descriptor_sets[i]),
+		                    reinterpret_cast<uintptr_t>(object_uniform_buffers[i].handle),
+		                    reinterpret_cast<uintptr_t>(pipeline), reinterpret_cast<uintptr_t>(vertex_buffer.handle),
+		                    reinterpret_cast<uintptr_t>(index_buffer.handle), index_count,
+		                    *static_cast<const TransformUniform*>(object_uniform_buffers[i].mapped) });
+#endif
+	}
 	vkCmdEndRenderPass(fd.command_buffer);
 
 	if (vkEndCommandBuffer(fd.command_buffer) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to end application command buffer");
 	}
+#ifdef LAB1_ENABLE_UI_TEST_HOOKS
+	ui_observer::endFrame();
+#endif
 }
 
 } // namespace application

@@ -16,7 +16,7 @@ void require(bool condition, const char* message) {
 }
 bool close(float a, float b) { return std::abs(a - b) < tolerance; }
 
-} // namespace
+}
 
 int main() {
 	try {
@@ -68,7 +68,6 @@ int main() {
 				const auto r = mesh.vertices[face[(i + 2) % 5]].position;
 				require(close(glm::dot(normal, p - a), 0), "Pentagon is not planar");
 				require(close(glm::length(q - p), edge_length), "Pentagon edges are not equal");
-				// The interior angle of a regular pentagon is 108 degrees.
 				require(close(glm::dot(glm::normalize(p - q), glm::normalize(r - q)),
 				              std::cos(108.0f * std::acos(-1.0f) / 180.0f)), "Pentagon angles are not equal");
 				const auto edge = std::make_pair(std::min(u, v), std::max(u, v));

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 
 namespace application {
@@ -29,22 +31,26 @@ struct Animation {
 	glm::vec3 rotation() const;
 };
 
-struct ControlsState {
+struct ProjectionState {
 	Projection projection = Projection::Perspective;
 	float fov_degrees = 45.0f;
 	float ortho_half_height = 2.5f;
+
+	void sanitize();
+	glm::mat4 projectionMatrix(float aspect) const;
+};
+
+struct ObjectState {
 	Transform transform;
+	Transform initial_transform;
 	Animation animation;
 	glm::vec3 user_color{ 1.0f };
 
 	void resetTransform();
 	void sanitize();
 	glm::mat4 modelMatrix() const;
-	glm::mat4 projectionMatrix(float aspect) const;
-	glm::mat4 mvpMatrix(float aspect) const;
 };
 
-// GLSL std140: mat4 at byte 0 (stride 16), vec4 at byte 64.
 struct alignas(16) TransformUniform {
 	glm::mat4 mvp;
 	glm::vec4 user_color;
@@ -55,4 +61,16 @@ static_assert(offsetof(TransformUniform, user_color) == 64);
 static_assert(sizeof(TransformUniform) == 80);
 static_assert(alignof(TransformUniform) == 16);
 
-} // namespace application
+inline constexpr uint32_t object_count = 2;
+struct SceneState {
+	ProjectionState camera;
+	std::array<ObjectState, object_count> objects;
+	int selected_object = 0;
+
+	SceneState();
+	void advance(double time);
+	void sanitize();
+	std::array<TransformUniform, object_count> uniforms(float aspect) const;
+};
+
+}

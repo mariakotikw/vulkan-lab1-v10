@@ -1,115 +1,184 @@
-# Лабораторная работа №1, вариант 10
+# Лабораторная №1, вариант 10
 
-Правильный додекаэдр на C++20 и Vulkan с дополнительными заданиями 1–5.
-Дополнительное задание №6 не реализовано. Управление находится в одном окне `Lab 1 Controls`.
-Стабильный starter с исправленной валидацией сохранён коммитом `19a2084` в ветке `lab1-v10`.
-Базовая лабораторная сохранена отдельным коммитом `36cbd01` перед дополнительными заданиями.
-Описание управления, анимации и автоматических проверок: [LAB1_EXTRAS.md](LAB1_EXTRAS.md).
+Базовая часть и дополнительные задания **1–6** выполнены на C++20 и Vulkan.
+В сцене одновременно отображаются два правильных додекаэдра; управление находится
+в одном окне ImGui `Lab 1 Controls`.
 
-## Геометрия
+Ветка `lab1-v10`. Стабильные этапы сохранены в Git: исправленный starter — `19a2084`,
+базовая лабораторная — `36cbd01`, версия с заданиями 1–5 на оценку 4 — **`f830316`**.
+Текущая версия включает задание №6 и опубликована в
+[публичном репозитории](https://github.com/mariakotikw/vulkan-lab1-v10).
 
-`source/dodecahedron.cpp` строит 20 уникальных вершин через `phi = (1 + sqrt(5)) / 2`:
+## Сборка и запуск
 
-- 8 вершин `(±1, ±1, ±1)`;
-- 4 вершины `(0, ±1/phi, ±phi)`;
-- 4 вершины `(±1/phi, ±phi, 0)`;
-- 4 вершины `(±phi, 0, ±1/phi)`.
+Для свежего клона нужны CMake, MinGW с поддержкой C++20, `mingw32-make` и Vulkan SDK.
+Переменная `VULKAN_SDK` должна указывать на SDK; компилятор, Make и SDK `Bin` должны
+быть доступны через `PATH`. Из корня проекта в PowerShell:
 
-Для этих координат задан список 12 пятиугольников с обходом против часовой стрелки при взгляде снаружи.
-Каждый выпуклый пятиугольник разбит веером `(0,1,2)`, `(0,2,3)`, `(0,3,4)`.
-Итого **20 вершин, 12 граней, 36 треугольников, 108 индексов uint32_t**, без дублирования вершин.
-Структура `Vertex` содержит `glm::vec3 position` и `glm::vec3 color`.
-RGB вычисляется из локальной позиции как `(position / phi + 1) * 0.5` и интерполируется между вершинами.
+```powershell
+$env:VK_LAYER_PATH = Join-Path $env:VULKAN_SDK 'Bin'
+cmake --preset mingw-debug
+cmake --build build-debug --parallel 4
+.\build-debug\vulkan-starter-app.exe
+```
 
-Тест `dodecahedron-geometry` проверяет уникальность вершин, общую описанную сферу, планарность,
-равенство сторон и внутренних углов 108°, выпуклость, 30 рёбер с двумя смежными гранями,
-согласованный обход, наружные нормали треугольников и совпадение площади триангуляции с площадью граней.
-
-## Vulkan и MVP
-
-`graphics.cpp/.hpp` содержит только небольшой helper для создания, записи и уничтожения mapped-буферов VMA.
-Приложение владеет vertex buffer, index buffer и uniform buffer, их тремя VMA allocations,
-descriptor set layout, descriptor pool/set, pipeline layout и graphics pipeline.
-Два временных shader module уничтожаются сразу после создания pipeline, включая путь ошибки.
-Остальные ресурсы уничтожаются в `application::shutdown()` после ожидания graphics queue,
-до уничтожения VMA allocator. Частично созданные ресурсы также очищаются при ошибке initialize.
-
-UBO содержит 80-байтовую `alignas(16)` структуру: `glm::mat4` по смещению 0 и
-`glm::vec4 user_color` по смещению 64. Размер и смещения проверяются `static_assert`.
-Descriptor set 0, binding 0 имеет тип `UNIFORM_BUFFER` и доступен vertex shader;
-GLSL объявляет ту же матрицу через `std140`. Матрица передаётся как `projection * view * model`.
-Model строится из ручных Position/Rotation/Scale и добавочного движения/вращения анимации.
-Исходные повороты — 5° вокруг X и 10° вокруг Y; анимация изначально на паузе.
-Камера `(3.5,3.5,3.5)` смотрит в начало координат. Исходный FOV 45°, near=0.1, far=100.
-GLM `perspectiveRH_ZO` и `orthoRH_ZO` используют глубину [0,1] и инверсию Y для Vulkan viewport.
-Aspect ratio вычисляется из текущего `swapchain_extent` после обработки resize.
-
-В `main.cpp` существующий `prepare()` перенесён перед `update()`: ожидание fence предыдущего кадра
-завершается до перезаписи общего UBO. `vmaFlushAllocation` обеспечивает видимость записи и для
-памяти без HOST_COHERENT. Starter использует один кадр в полёте, поэтому одного UBO достаточно.
-
-Pipeline использует triangle list, back-face culling, `COUNTER_CLOCKWISE`, depth test/write `LESS`
-и существующий render pass/depth buffer. Viewport и scissor динамические.
-В `render()` сохранены reset/begin/end command buffer и начало/конец существующего render pass;
-добавлены bind pipeline, vertex/index buffers, descriptor set и `vkCmdDrawIndexed(108, ...)`.
-Окно `Lab 1 Controls` использует отдельный существующий проход ImGui.
-`graphics_internal.cpp` и публичный интерфейс application не изменены.
-
-## Сборка и запуск в настроенном Windows-окружении
-
-Из текущей рабочей папки PowerShell:
+В уже настроенном локальном Windows-окружении также доступны скрипты из `.tools/`.
+Они не включены в GitHub и не требуются для приведённых выше команд:
 
 ```powershell
 & .\.tools\build.ps1
-. .\.tools\environment.ps1
-ctest --test-dir build-debug --output-on-failure
 & .\.tools\start.ps1
 ```
 
-Build helper активирует установленный MinGW, CMake и Vulkan SDK 1.4.363.0, использует ASCII junction
-рабочей папки и выполняет команды автора:
+Исполняемый файл — `build-debug/vulkan-starter-app.exe`; рабочий каталог — корень
+проекта, поскольку шейдеры загружаются из `shaders/*.spv`.
+Сборка: CMake preset `mingw-debug`, MinGW/GCC 14.1.0, GNU Make 4.4.1,
+Vulkan SDK **1.4.363.0**, `glslc`. SDK установлен вне проекта.
+
+Локальный `environment.ps1` задаёт переменные только для текущего процесса и
+использует ASCII junction, чтобы MinGW Make корректно работал с кириллицей в пути.
+При клонировании на другой компьютер проще выбрать путь без кириллицы.
+
+CMake загружает закреплённые версии GLFW, vk-bootstrap, VMA, ImGui и GLM через
+FetchContent. Сохранённый `build-debug/` содержит их кэш и результаты сборки;
+сборка шейдеров выполняется автоматически через `glslc`.
+Инструкции исходного starter находятся в [README.md](README.md).
+
+## Управление и дополнительные задания
+
+Верхние кнопки **Object 1 / Object 2** выбирают редактируемый объект.
+Настройки Projection общие; Transform, Animation и Color принадлежат каждому объекту.
+
+1. **Projection:** Perspective / Orthographic; FOV 15–90°, исходно 45°;
+   Half height 1–8, исходно 2.5. Используются GLM `perspectiveRH_ZO` и `orthoRH_ZO`,
+   near=0.1, far=100, глубина [0,1] и инверсия Y для Vulkan.
+2. **Transform:** Position X/Y/Z, Rotation X/Y/Z в градусах, Scale X/Y/Z.
+   Scale ограничен 0.05–5. Reset Transform возвращает выбранному объекту его
+   собственные исходные position/rotation/scale.
+3. **Animation:** Play/Pause, Reset Animation, Speed, Radius, Vertical amplitude.
+   Фаза интегрируется как `phase += deltaTime * speed`. Pause сохраняет фазу;
+   Play продолжает без скачка из-за времени паузы. Движение пространственное:
+   `offset = (radius*sin(phase), amplitude*sin(2*phase), radius*(cos(phase)-1))`;
+   добавляется вращение `(0.45,0.7,0.3)*phase` радиан. Анимации независимы и
+   продолжают работать при выборе другого объекта.
+4. **Color:** ColorEdit3 задаёт RGB-множитель из UBO, без пересоздания pipeline.
+   Белый цвет сохраняет исходные procedural vertex colors.
+5. **Procedural colors:** цвет каждой вершины вычисляется из её локальной позиции
+   как `(position / phi + 1) * 0.5`, затем интерполируется по треугольникам.
+6. **Несколько объектов:** два descriptor set ссылаются на два отдельных UBO.
+   Для обоих объектов используются общие vertex/index buffers и один pipeline.
+
+Начальные параметры:
+
+| Объект | Position | Rotation, градусы | Scale | RGB-множитель |
+|---|---|---|---|---|
+| Object 1 | (-1.5, 0, 0) | (5, 10, 0) | (0.6, 0.6, 0.6) | (1.0, 0.55, 0.35) |
+| Object 2 | (1.5, 0, 0) | (15, 35, 5) | (0.5, 0.5, 0.5) | (0.35, 0.65, 1.0) |
+
+## Геометрия и Vulkan
+
+Одна геометрия: **20 уникальных вершин, 12 пятиугольников, 36 треугольников,
+108 индексов uint32_t**. Координаты строятся через `phi=(1+sqrt(5))/2`:
+8 точек `(±1,±1,±1)` и по 4 точки `(0,±1/phi,±phi)`, `(±1/phi,±phi,0)`,
+`(±phi,0,±1/phi)`. Каждая грань разбита веером на три треугольника с наружным обходом.
+
+| Ресурс сцены додекаэдров | Количество |
+|---|---:|
+| Объекты | 2 |
+| Descriptor sets | 2 |
+| Uniform buffers / их VMA allocations | 2 / 2 |
+| Vertex buffers | 1 |
+| Index buffers | 1 |
+| Graphics pipelines | 1 |
+| Descriptor set layouts | 1 |
+| Descriptor pools | 1 |
+| Indexed draw calls на кадр | 2 |
+
+Существующий backend ImGui отдельно управляет ресурсами интерфейса.
+Общий pool имеет `maxSets=2` и два `VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER` descriptors.
+`descriptor_sets[i]` записан с `object_uniform_buffers[i]`, offset=0, range=80.
+
+UBO `TransformUniform`: std140, `mat4 mvp` по offset 0, `vec4 user_color` по offset 64,
+размер 80, align 16; соответствие C++/GLSL проверено `static_assert`.
+Общие view/projection вычисляются один раз, затем для каждого объекта:
+`MVP[i] = projection * view * model[i]`.
+Model: `T(position + animation offset) * Rx * Ry * Rz * S`.
+Камера `(3.5,3.5,3.5)` смотрит в начало координат.
+
+Viewport сцены расположен слева от панели ImGui. Aspect ratio вычисляется из его
+актуальных размеров с учётом framebuffer и масштаба UI, поэтому resize не растягивает
+фигуры. Pipeline, vertex buffer и index buffer привязываются один раз;
+в `application::render()` внутри цикла выполняется отдельный
+`vkCmdBindDescriptorSets(..., &descriptor_sets[i], ...)` перед `vkCmdDrawIndexed(108,...)`.
+
+UBO записываются после ожидания fence в `prepare()`; видимость mapped writes
+обеспечивает `vmaFlushAllocation`. При shutdown выполняется `vkQueueWaitIdle`,
+уничтожаются pipeline, descriptor pool/layout и оба UBO с allocations, затем общие
+index/vertex buffers. Уничтожение pool освобождает оба set.
+
+## Какие файлы нужны
+
+- `source/`: приложение, состояние/математика объектов, геометрия, buffer helper
+  и исходный Vulkan starter; `.hpp` задают интерфейсы соответствующих `.cpp`.
+- `shaders/`: исходники GLSL; `.spv` генерируются при сборке и нужны для запуска.
+- `tests/`: проверки геометрии и состояния, два файла тестового наблюдателя,
+  Windows UI-тест и проверка изображений. Наблюдатель включается только через
+  `LAB1_ENABLE_UI_TEST_HOOKS=ON`; обычная сборка использует OFF.
+- `CMakeLists.txt`, `CMakePresets.json`: сборка; `README.md`: инструкции автора;
+  `LICENSE`, `NOTICE`: лицензия и авторство.
+- `.tools/`: локальное окружение, Make, сборка/запуск/проверка, настройки Validation,
+  актуальные результаты и архив. Каталог исключён из Git.
+- `build-debug/`: автоматически созданный кэш и бинарные файлы, исключённые из Git.
+
+## Проверки
+
+Выполнено на Windows / Intel UHD Graphics, Vulkan SDK 1.4.363.0:
+
+- **CTest 2/2 PASS**: правильность геометрии и procedural colors; std140;
+  проекции/depth/aspect; XYZ transform/reset; animation timing/pause/resume/FPS;
+  независимые per-object MVP/color и временные шкалы.
+- **UI-тест 62/62 PASS**: настоящие клики и ввод в ImGui; разные handles двух
+  descriptor sets и UBO; содержимое mapped UBO; два draw по 108 индексов;
+  общий pipeline/VB/IB; оба объекта, проекции, resize и minimize/restore.
+- **Проверка screenshots PASS**: две отдельные фигуры в обеих проекциях и после
+  resize до 1000×680; изменение scale/color одного не меняет пиксели другого;
+  различные интерполированные RGB на обеих поверхностях.
+- **Обычный запуск:** 8 секунд рендеринга, resize 1000×680 → 1280×720,
+  minimize/restore, штатное закрытие. Khronos Core + Synchronization Validation:
+  **0 ERROR, 0 WARNING, exit code 0**, включая shutdown.
+
+Повторение CTest после сборки:
 
 ```powershell
-cmake --preset mingw-debug
+ctest --test-dir build-debug --output-on-failure
+```
+
+В настроенном локальном окружении обычный запуск проверяется через `.tools/verify.ps1`.
+Полный UI-тест использует локальную `.tools/`, требует обычного рабочего стола Windows
+и NumPy/Pillow для сравнения изображений; он наблюдает состояние и команды, не изменяя
+логику приложения:
+
+```powershell
+. .\.tools\environment.ps1
+cmake --preset mingw-debug -DFETCHCONTENT_UPDATES_DISCONNECTED=ON -DLAB1_ENABLE_UI_TEST_HOOKS=ON
+cmake --build build-debug --parallel 4
+& .\tests\verify_controls.ps1
+python .\tests\verify_images.py
+cmake --preset mingw-debug -DLAB1_ENABLE_UI_TEST_HOOKS=OFF
 cmake --build build-debug --parallel 4
 ```
 
-Приложение запускается из корня проекта; шейдеры загружаются по относительным путям `shaders/*.spv`.
-CMake скачивает закреплённую GLM 1.0.3 и компилирует GLSL через существующий механизм `glslc`.
-`glslc` обязателен при конфигурации, поэтому сборка не может незаметно пропустить шейдеры.
+Локальные отчёты находятся в `.tools/logs/task6/`: `result.json`, `checks.json`,
+`snapshots.json`, `image-checks.json`, `final-normal-result.json` и соответствующие логи.
+[Итоговый screenshot двух объектов и ImGui](docs/screenshots/perspective.png).
+Локальный Orthographic screenshot: `.tools/logs/task6/orthographic.png`.
 
-Автоматическая проверка с Khronos Validation и Synchronization Validation:
+## Очистка рабочего каталога
 
-```powershell
-& .\.tools\verify.ps1 -RenderSeconds 8 -ExerciseWindow -RequireClean
-```
-
-Логи сборки: `.tools/logs/configure.log`, `.tools/logs/build.log`.
-Логи последнего запуска: `.tools/logs/starter-stdout.log`, `.tools/logs/starter-stderr.log`;
-результаты проверки: `.tools/logs/verification.json`; screenshot: `.tools/logs/starter-window.png`.
-Артефакты стабильной базы сохранены отдельно в `.tools/logs/stable-19a2084/`.
-
-## Историческая проверка базовой версии
-
-Проверено 2 октября 2026 года на Windows, Intel UHD Graphics, Vulkan SDK **1.4.363.0**:
-
-- Debug-сборка MinGW завершилась успешно; оба GLSL скомпилированы `glslc`.
-- `ctest`: **1/1 PASS**; оба SPIR-V модуля прошли `spirv-val --target-env vulkan1.0`.
-- Khronos Validation Layer действительно загружен; включены Core Checks и Synchronization Validation.
-- После 8 секунд отрисовки проверены resize до 1000×650, затем 1280×720, minimize/restore.
-- Итог: **0 Validation ERROR, 0 Validation WARNING, exit code 0** после штатного закрытия.
-- Screenshot просмотрен: объект отображается объёмно, ImGui находится справа, не закрывая его.
-
-В диагностическом stderr во время resize встречается обычное сообщение starter
-`Swapchain is suboptimal for rendering!` о результате `VK_SUBOPTIMAL_KHR`;
-оно обрабатывается пересозданием swapchain и не является сообщением Validation Layers.
-
-Созданы: `source/dodecahedron.cpp/.hpp`, `source/graphics.cpp/.hpp`,
-`shaders/dodecahedron.vert`, `shaders/dodecahedron.frag`, `tests/dodecahedron_tests.cpp`, `LAB1.md`.
-Изменены: `source/application.cpp`, `source/main.cpp`, `CMakeLists.txt`.
-Эта базовая реализация теперь сохранена коммитом `36cbd01`.
-Результаты текущей версии с заданиями 1–5 приведены в [LAB1_EXTRAS.md](LAB1_EXTRAS.md).
-
-Документация зависимостей: [GLM](https://github.com/g-truc/glm/releases/tag/1.0.3),
-[VMA mapped memory](https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/memory_mapping.html),
-[Vulkan front face](https://docs.vulkan.org/refpages/latest/refpages/source/VkFrontFace.html).
+Старые диагностические запуски, прежние отчёты, резервные копии и состояние исходников
+до уборки сохранены локально в `.tools/archive/before-cleanup-20261004.zip`.
+Архив не включён в публичный репозиторий.
+Все 202 файла архива проверены по SHA-256; внутри есть `cleanup-manifest.json`
+с исходными путями, размерами, hashes и состоянием Git.
+Установщик SDK удалён из проекта после установки; SDK и рабочие инструменты сохранены.
+Исторические отдельные отчёты объединены в этот файл. Исходники и тесты не удалялись.

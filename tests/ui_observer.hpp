@@ -2,10 +2,17 @@
 
 #include "application_state.hpp"
 
-// Only compiled when LAB1_ENABLE_UI_TEST_HOOKS is explicitly enabled.
-// Observes real UI interaction; never changes application state or GPU commands.
 namespace ui_observer {
+struct Draw {
+	uintptr_t descriptor_set, uniform_buffer, pipeline, vertex_buffer, index_buffer;
+	uint32_t index_count;
+	application::TransformUniform uploaded_uniform;
+};
 void beginFrame();
 void item(const char* name);
-void frame(const application::ControlsState& state, const application::TransformUniform& uniform, double time);
+void state(const application::SceneState& scene,
+           const std::array<application::TransformUniform, application::object_count>& uniforms, double time);
+void draw(const Draw& value);
+void descriptorWrite(uintptr_t descriptor_set, uintptr_t uniform_buffer);
+void endFrame();
 }
