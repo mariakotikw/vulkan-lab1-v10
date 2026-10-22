@@ -1,0 +1,78 @@
+﻿[
+    {
+        "check":  "Camera moves both objects in the GPU view",
+        "passed":  true
+    },
+    {
+        "check":  "Camera yaw changes the rendered view",
+        "passed":  true
+    },
+    {
+        "check":  "Independent shininess control",
+        "passed":  true
+    },
+    {
+        "check":  "Specular color control",
+        "passed":  true
+    },
+    {
+        "check":  "Adding a third point grows SSBO and uploads the count",
+        "passed":  true
+    },
+    {
+        "check":  "Zero point lights retain a valid SSBO descriptor",
+        "passed":  true
+    },
+    {
+        "check":  "Point position, intensity and RGB controls",
+        "passed":  true
+    },
+    {
+        "check":  "Remove Point updates GPU count",
+        "passed":  true
+    },
+    {
+        "check":  "Adding a second spot grows its SSBO",
+        "passed":  true
+    },
+    {
+        "check":  "Zero spots retain a valid SSBO descriptor",
+        "passed":  true
+    },
+    {
+        "check":  "Spot position, normalized direction and intensity controls",
+        "passed":  true
+    },
+    {
+        "check":  "Equal spot angles render safely",
+        "passed":  true
+    },
+    {
+        "check":  "Reversed cone angles are sorted",
+        "passed":  true
+    },
+    {
+        "check":  "Remove Spot updates GPU count",
+        "passed":  true
+    },
+    {
+        "check":  "Show Light Gizmos toggle",
+        "passed":  true
+    },
+    {
+        "check":  "All direct lights can be removed",
+        "passed":  true
+    },
+    {
+        "check":  "Shared Scene set is separate from both Object sets",
+        "passed":  true
+    },
+    {
+        "check":  "Lighting UI changes produce zero validation errors and warnings",
+        "passed":  true
+    },
+    {
+        "check":  "Normal exit after lighting controls test",
+        "passed":  true
+    }
+]

@@ -1,0 +1,250 @@
+﻿[
+    {
+        "check":  "Default perspective and paused animation",
+        "passed":  true
+    },
+    {
+        "check":  "Draw loop executes for both objects",
+        "passed":  true
+    },
+    {
+        "check":  "Two distinct VkDescriptorSet handles are bound",
+        "passed":  true
+    },
+    {
+        "check":  "Objects use distinct uniform buffers",
+        "passed":  true
+    },
+    {
+        "check":  "Bound descriptor references its own UBO and draws the shared full mesh",
+        "passed":  true
+    },
+    {
+        "check":  "Bound descriptor references its own UBO and draws the shared full mesh",
+        "passed":  true
+    },
+    {
+        "check":  "Both draws share one pipeline",
+        "passed":  true
+    },
+    {
+        "check":  "Both draws share one vertexBuffer",
+        "passed":  true
+    },
+    {
+        "check":  "Both draws share one indexBuffer",
+        "passed":  true
+    },
+    {
+        "check":  "Mapped GPU uniform memory contains different object MVP matrices",
+        "passed":  true
+    },
+    {
+        "check":  "Mapped GPU uniform memory contains different object colors",
+        "passed":  true
+    },
+    {
+        "check":  "Object 0 calculated MVP reaches its own mapped UBO",
+        "passed":  true
+    },
+    {
+        "check":  "Object 1 calculated MVP reaches its own mapped UBO",
+        "passed":  true
+    },
+    {
+        "check":  "Perspective to Orthographic changes the GPU MVP",
+        "passed":  true
+    },
+    {
+        "check":  "Orthographic scale control",
+        "passed":  true
+    },
+    {
+        "check":  "Projection roundtrip restores perspective",
+        "passed":  true
+    },
+    {
+        "check":  "FOV changes perspective",
+        "passed":  true
+    },
+    {
+        "check":  "Position axis 0 input",
+        "passed":  true
+    },
+    {
+        "check":  "Position axis 0 reaches model matrix",
+        "passed":  true
+    },
+    {
+        "check":  "Position axis 1 input",
+        "passed":  true
+    },
+    {
+        "check":  "Position axis 1 reaches model matrix",
+        "passed":  true
+    },
+    {
+        "check":  "Position axis 2 input",
+        "passed":  true
+    },
+    {
+        "check":  "Position axis 2 reaches model matrix",
+        "passed":  true
+    },
+    {
+        "check":  "Position changes GPU MVP",
+        "passed":  true
+    },
+    {
+        "check":  "Editing Object 1 transform leaves Object 2 unchanged",
+        "passed":  true
+    },
+    {
+        "check":  "Rotation axis 0 input",
+        "passed":  true
+    },
+    {
+        "check":  "Rotation axis 1 input",
+        "passed":  true
+    },
+    {
+        "check":  "Rotation axis 2 input",
+        "passed":  true
+    },
+    {
+        "check":  "XYZ rotation changes model matrix",
+        "passed":  true
+    },
+    {
+        "check":  "Scale axis 0 input",
+        "passed":  true
+    },
+    {
+        "check":  "Scale axis 1 input",
+        "passed":  true
+    },
+    {
+        "check":  "Scale axis 2 input",
+        "passed":  true
+    },
+    {
+        "check":  "Scale changes model matrix",
+        "passed":  true
+    },
+    {
+        "check":  "Negative scale is clamped to a positive value",
+        "passed":  true
+    },
+    {
+        "check":  "Reset Transform restores the initial model",
+        "passed":  true
+    },
+    {
+        "check":  "Animation advances using frame time at speed 1",
+        "passed":  true
+    },
+    {
+        "check":  "Animation moves and rotates the object",
+        "passed":  true
+    },
+    {
+        "check":  "Object 1 animation leaves paused Object 2 unchanged",
+        "passed":  true
+    },
+    {
+        "check":  "Pause freezes position and rotation",
+        "passed":  true
+    },
+    {
+        "check":  "Play resumes without including paused time",
+        "passed":  true
+    },
+    {
+        "check":  "Speed 2 doubles the measured animation rate",
+        "passed":  true
+    },
+    {
+        "check":  "Radius changes the trajectory",
+        "passed":  true
+    },
+    {
+        "check":  "Vertical amplitude input works",
+        "passed":  true
+    },
+    {
+        "check":  "Reset Animation returns to the base transform",
+        "passed":  true
+    },
+    {
+        "check":  "ColorEdit channel 0 input",
+        "passed":  true
+    },
+    {
+        "check":  "ColorEdit channel 1 input",
+        "passed":  true
+    },
+    {
+        "check":  "ColorEdit channel 2 input",
+        "passed":  true
+    },
+    {
+        "check":  "Color tint changes without changing MVP",
+        "passed":  true
+    },
+    {
+        "check":  "Object 1 ColorEdit leaves Object 2 color unchanged",
+        "passed":  true
+    },
+    {
+        "check":  "Object selection displays its own transform",
+        "passed":  true
+    },
+    {
+        "check":  "Object 2 transform affects only its own uniform",
+        "passed":  true
+    },
+    {
+        "check":  "Object 2 ColorEdit affects only its own uniform",
+        "passed":  true
+    },
+    {
+        "check":  "Object 2 animates independently",
+        "passed":  true
+    },
+    {
+        "check":  "Unselected Object 2 continues animation",
+        "passed":  true
+    },
+    {
+        "check":  "Perspective projection responds to resize",
+        "passed":  true
+    },
+    {
+        "check":  "Orthographic projection responds to resize",
+        "passed":  true
+    },
+    {
+        "check":  "Minimize and restore continue rendering",
+        "passed":  true
+    },
+    {
+        "check":  "Both descriptor sets remain bound after projection, resize and minimize/restore",
+        "passed":  true
+    },
+    {
+        "check":  "Khronos Validation Layer is loaded",
+        "passed":  true
+    },
+    {
+        "check":  "Core and Synchronization Validation enabled",
+        "passed":  true
+    },
+    {
+        "check":  "Validation ERROR=0, WARNING=0 after every UI interaction",
+        "passed":  true
+    },
+    {
+        "check":  "Normal close returns exit code 0",
+        "passed":  true
+    }
+]

@@ -23,6 +23,9 @@ struct Context {
 	VkExtent2D swapchain_extent;
 
 	VkRenderPass render_pass;
+	bool validation_enabled = false;
+	uint32_t validation_errors = 0;
+	uint32_t validation_warnings = 0;
 };
 
 struct FrameData {

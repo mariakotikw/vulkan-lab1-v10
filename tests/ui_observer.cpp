@@ -28,10 +28,12 @@ struct Observation {
 	std::chrono::steady_clock::time_point last_write{};
 	unsigned serial = 0;
 	application::SceneState scene;
-	std::array<application::TransformUniform, application::object_count> uniforms;
+	std::array<application::ObjectUniform, application::object_count> uniforms;
 	double time = 0;
 	std::vector<Draw> draws;
 	std::map<uintptr_t, uintptr_t> descriptor_buffers;
+	application::SceneUniform uploaded_scene{};
+	uintptr_t scene_set = 0, point_buffer = 0, spot_buffer = 0;
 };
 Observation& observation() { static Observation value; return value; }
 void vector(std::ostream& out, glm::vec3 v) { out << '[' << v.x << ',' << v.y << ',' << v.z << ']'; }
@@ -51,13 +53,13 @@ void beginFrame() {
 	observation().draws.clear();
 }
 
-void item(const char* name) {
+void item(const char* name, float width) {
 	const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
-	observation().rectangles[name] = { min.x, min.y, max.x, max.y };
+	observation().rectangles[name] = { min.x, min.y, width > 0 ? min.x + width : max.x, max.y };
 }
 
 void state(const application::SceneState& scene,
-           const std::array<application::TransformUniform, application::object_count>& uniforms, double time) {
+           const std::array<application::ObjectUniform, application::object_count>& uniforms, double time) {
 	auto& data = observation();
 	data.scene = scene;
 	data.uniforms = uniforms;
@@ -67,6 +69,15 @@ void state(const application::SceneState& scene,
 void draw(const Draw& value) { observation().draws.push_back(value); }
 void descriptorWrite(uintptr_t descriptor_set, uintptr_t uniform_buffer) {
 	observation().descriptor_buffers[descriptor_set] = uniform_buffer;
+}
+
+void lighting(const application::SceneUniform& uploaded_scene, uintptr_t scene_set,
+              uintptr_t point_buffer, uintptr_t spot_buffer) {
+	auto& data = observation();
+	data.uploaded_scene = uploaded_scene;
+	data.scene_set = scene_set;
+	data.point_buffer = point_buffer;
+	data.spot_buffer = spot_buffer;
 }
 
 void endFrame() {
@@ -92,20 +103,51 @@ void endFrame() {
 	    << ",\"selectedObject\":" << data.scene.selected_object
 	    << ",\"projection\":\"" << (camera.projection == application::Projection::Perspective ? "Perspective" : "Orthographic")
 	    << "\",\"fov\":" << camera.fov_degrees << ",\"orthoHeight\":" << camera.ortho_half_height;
+	out << ",\"cameraPosition\":"; vector(out, camera.position);
+	out << ",\"yaw\":" << camera.yaw_degrees << ",\"pitch\":" << camera.pitch_degrees;
+	out << ",\"shininess\":" << state.material.shininess;
+	out << ",\"specular\":"; vector(out, state.material.specular);
+	out << ",\"pointCount\":" << data.scene.point_lights.size() << ",\"spotCount\":" << data.scene.spot_lights.size();
+	out << ",\"showGizmos\":" << (data.scene.show_light_gizmos ? "true" : "false");
+	out << ",\"uploadedPointCount\":" << data.uploaded_scene.light_counts.x
+	    << ",\"uploadedSpotCount\":" << data.uploaded_scene.light_counts.y
+	    << ",\"ambientIntensity\":" << data.uploaded_scene.ambient_color_intensity.w
+	    << ",\"directionalIntensity\":" << data.uploaded_scene.directional_color_intensity.w;
+	out << std::hex << ",\"sceneSet\":\"" << data.scene_set << "\",\"pointBuffer\":\"" << data.point_buffer
+	    << "\",\"spotBuffer\":\"" << data.spot_buffer << "\"" << std::dec;
+	out << ",\"pointLights\":[";
+	for (size_t i=0; i<data.scene.point_lights.size(); ++i) {
+		if (i) out << ',';
+		const auto& light = data.scene.point_lights[i];
+		out << "{\"position\":"; vector(out,light.position);
+		out << ",\"color\":"; vector(out,light.color);
+		out << ",\"intensity\":" << light.intensity << '}';
+	}
+	out << "],\"spotLights\":[";
+	for (size_t i=0; i<data.scene.spot_lights.size(); ++i) {
+		if (i) out << ',';
+		const auto& light = data.scene.spot_lights[i];
+		out << "{\"position\":"; vector(out,light.position);
+		out << ",\"direction\":"; vector(out,light.direction);
+		out << ",\"inner\":" << light.inner_degrees << ",\"outer\":" << light.outer_degrees
+		    << ",\"intensity\":" << light.intensity << '}';
+	}
+	out << ']';
+
 	out << ",\"position\":"; vector(out, state.transform.position);
 	out << ",\"rotation\":"; vector(out, state.transform.rotation_degrees);
 	out << ",\"scale\":"; vector(out, state.transform.scale);
-	out << ",\"color\":"; vector(out, state.user_color);
+	out << ",\"color\":"; vector(out, state.material.albedo);
 	out << ",\"playing\":" << (state.animation.playing ? "true" : "false")
 	    << ",\"phase\":" << state.animation.phase << ",\"speed\":" << state.animation.speed
 	    << ",\"radius\":" << state.animation.radius << ",\"amplitude\":" << state.animation.vertical_amplitude;
 	out << ",\"model\":"; matrix(out, state.modelMatrix());
-	out << ",\"mvp\":"; matrix(out, uniform.mvp);
+	out << ",\"mvp\":"; matrix(out, data.scene.camera.projectionMatrix((ImGui::GetIO().DisplaySize.x - 384.0f) / ImGui::GetIO().DisplaySize.y) * data.scene.camera.viewMatrix() * uniform.model);
 	out << ",\"objects\":[";
 	for (size_t i = 0; i < data.scene.objects.size(); ++i) {
 		if (i != 0) out << ',';
-		out << "{\"mvp\":"; matrix(out, data.uniforms[i].mvp);
-		out << ",\"color\":"; vector(out, glm::vec3(data.uniforms[i].user_color));
+		out << "{\"mvp\":"; matrix(out, data.scene.camera.projectionMatrix((ImGui::GetIO().DisplaySize.x - 384.0f) / ImGui::GetIO().DisplaySize.y) * data.scene.camera.viewMatrix() * data.uniforms[i].model);
+		out << ",\"color\":"; vector(out, glm::vec3(data.uniforms[i].albedo));
 		out << ",\"position\":"; vector(out, data.scene.objects[i].transform.position);
 		out << '}';
 	}
@@ -120,8 +162,8 @@ void endFrame() {
 		    << "\",\"vertexBuffer\":\"" << draw.vertex_buffer
 		    << "\",\"indexBuffer\":\"" << draw.index_buffer
 		    << "\",\"indexCount\":" << std::dec << draw.index_count << ",\"uploadedMvp\":";
-		matrix(out, draw.uploaded_uniform.mvp);
-		out << ",\"uploadedColor\":"; vector(out, glm::vec3(draw.uploaded_uniform.user_color));
+		matrix(out, data.scene.camera.projectionMatrix((ImGui::GetIO().DisplaySize.x - 384.0f) / ImGui::GetIO().DisplaySize.y) * data.scene.camera.viewMatrix() * draw.uploaded_uniform.model);
+		out << ",\"uploadedColor\":"; vector(out, glm::vec3(draw.uploaded_uniform.albedo));
 		out << '}';
 	}
 	out << ']';

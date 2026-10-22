@@ -1,0 +1,14 @@
+Vulkan validation layers: enabled
+GPU: Intel(R) UHD Graphics
+Lab 2: 20 geometric / 60 flat vertices, 12 pentagons, 36 triangles; Scene set 0 (UBO + point/spot SSBO), Object set 1 (2 UBOs)
+SMOKE phase 0
+SMOKE phase 1
+SMOKE phase 2
+SMOKE phase 3
+SMOKE phase 4
+SMOKE phase 5
+SMOKE phase 6
+SMOKE phase 7
+SMOKE phase 8
+SMOKE phase 9
+Validation result: errors=0, warnings=0

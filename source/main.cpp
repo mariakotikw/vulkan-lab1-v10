@@ -2,6 +2,8 @@
 #include <climits>
 
 #include <iostream>
+#include <string_view>
+#include <exception>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -17,14 +19,16 @@ namespace {
 constexpr int32_t default_window_width = 1280;
 constexpr int32_t default_window_height = 720;
 
-constexpr char default_window_title[] = "Vulkan Starter App";
+constexpr char default_window_title[] = "Vulkan Lab 2 - Camera and Lighting - Variant 10";
 
 GLFWwindow* glfw_window;
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
 	int status = EXIT_SUCCESS;
+	const bool smoke = argc == 2 && std::string_view(argv[1]) == "--smoke-test";
+	uint32_t frame = 0;
 
 	if (!glfwInit()) {
 		std::cerr << "Failed to initialize GLFW\n";
@@ -72,6 +76,7 @@ int main() {
 		goto err_application_init;
 	}
 
+	try {
 	while (!glfwWindowShouldClose(glfw_window)) {
 		const double time = glfwGetTime();
 
@@ -89,16 +94,26 @@ int main() {
 		}
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
+		if (smoke) application::smokeStep(frame);
 		application::update(time);
 		ImGui::Render();
 
 		application::render(fd);
 		graphics::internal::submitAndPresent();
+		if (smoke && ++frame == 600) glfwSetWindowShouldClose(glfw_window, GLFW_TRUE);
+	}
+	} catch (const std::exception& error) {
+		std::cerr << "Rendering: " << error.what() << '\n';
+		status = EXIT_FAILURE;
 	}
 
 	application::shutdown();
 err_application_init:
 	graphics::internal::shutdown();
+	if (smoke && (!graphics::internal::context.validation_enabled ||
+	              graphics::internal::context.validation_errors || graphics::internal::context.validation_warnings)) {
+		status = EXIT_FAILURE;
+	}
 err_graphics_init:
 	ImGui_ImplGlfw_Shutdown();
 err_imgui_glfw_init:

@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <vector>
+#include "lighting.hpp"
 
 namespace application {
 
@@ -34,9 +36,17 @@ struct Animation {
 struct ProjectionState {
 	Projection projection = Projection::Perspective;
 	float fov_degrees = 45.0f;
-	float ortho_half_height = 2.5f;
+	float ortho_half_height = 3.2f;
+	float near_plane = 0.1f;
+	float far_plane = 100.0f;
+	glm::vec3 position{ 0.0f, 2.5f, 9.0f };
+	float yaw_degrees = -90.0f;
+	float pitch_degrees = -15.52411f;
 
 	void sanitize();
+	void reset();
+	glm::vec3 forward() const;
+	glm::mat4 viewMatrix() const;
 	glm::mat4 projectionMatrix(float aspect) const;
 };
 
@@ -44,33 +54,35 @@ struct ObjectState {
 	Transform transform;
 	Transform initial_transform;
 	Animation animation;
-	glm::vec3 user_color{ 1.0f };
+	Material material;
 
 	void resetTransform();
 	void sanitize();
 	glm::mat4 modelMatrix() const;
 };
 
-struct alignas(16) TransformUniform {
-	glm::mat4 mvp;
-	glm::vec4 user_color;
-};
-static_assert(std::is_standard_layout_v<TransformUniform>);
-static_assert(offsetof(TransformUniform, mvp) == 0);
-static_assert(offsetof(TransformUniform, user_color) == 64);
-static_assert(sizeof(TransformUniform) == 80);
-static_assert(alignof(TransformUniform) == 16);
-
 inline constexpr uint32_t object_count = 2;
 struct SceneState {
 	ProjectionState camera;
 	std::array<ObjectState, object_count> objects;
 	int selected_object = 0;
+	glm::vec3 ambient_color{ 1.0f };
+	float ambient_intensity = 0.08f;
+	DirectionalLight directional;
+	std::vector<PointLight> point_lights;
+	std::vector<SpotLight> spot_lights;
+	bool show_light_gizmos = true;
+	float gizmo_length = 2.5f;
 
 	SceneState();
 	void advance(double time);
 	void sanitize();
-	std::array<TransformUniform, object_count> uniforms(float aspect) const;
+	SceneUniform sceneUniform(float aspect) const;
+	std::array<ObjectUniform, object_count> objectUniforms() const;
+	void addPointLight();
+	void addSpotLight();
+	void removePointLight(size_t index);
+	void removeSpotLight(size_t index);
 };
 
 }

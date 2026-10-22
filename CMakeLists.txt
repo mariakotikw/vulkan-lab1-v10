@@ -5,7 +5,8 @@ project(vulkan-starter-app LANGUAGES C CXX)
 
 add_executable(${PROJECT_NAME}
 	source/main.cpp source/graphics_internal.cpp source/application.cpp
-	source/graphics.cpp source/dodecahedron.cpp source/application_state.cpp)
+	source/graphics.cpp source/dodecahedron.cpp source/application_state.cpp
+	source/lighting.cpp source/light_gizmos.cpp source/application_ui.cpp)
 
 if(LINUX)
 	target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
@@ -94,7 +95,7 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 
 # Compile shaders
-find_program(GLSLC_FOUND glslc REQUIRED)
+find_program(GLSLC_FOUND glslc HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
 if(GLSLC_FOUND)
 	set(_SHADER_BINARIES)
 
@@ -106,7 +107,7 @@ if(GLSLC_FOUND)
 		add_custom_command(
 			OUTPUT ${SHADER_BINARY_PATH}
 			COMMAND ${GLSLC_FOUND} ${SHADER_SOURCE} -o ${SHADER_BINARY_PATH}
-			DEPENDS ${SHADER_SOURCE}
+			DEPENDS ${SHADER_SOURCE} ${CMAKE_SOURCE_DIR}/shaders/scene.glsl ${CMAKE_SOURCE_DIR}/shaders/object.glsl
 			COMMENT "Compiling ${SHADER_FILE} shader"
 			VERBATIM
 		)
@@ -122,6 +123,8 @@ if(GLSLC_FOUND)
 
 	compile_shader(dodecahedron.vert)
 	compile_shader(dodecahedron.frag)
+	compile_shader(gizmo.vert)
+	compile_shader(gizmo.frag)
 
 	add_custom_target(shaders DEPENDS ${_SHADER_BINARIES})
 	add_dependencies(${PROJECT_NAME} shaders)
@@ -141,9 +144,21 @@ if(BUILD_TESTING)
 	target_link_libraries(dodecahedron-tests PRIVATE glm::glm)
 	target_compile_features(dodecahedron-tests PRIVATE cxx_std_20)
 	add_test(NAME dodecahedron-geometry COMMAND dodecahedron-tests)
-	add_executable(application-state-tests tests/application_state_tests.cpp source/application_state.cpp)
+	add_executable(application-state-tests tests/application_state_tests.cpp source/application_state.cpp source/lighting.cpp)
 	target_include_directories(application-state-tests PRIVATE source)
 	target_link_libraries(application-state-tests PRIVATE glm::glm)
 	target_compile_features(application-state-tests PRIVATE cxx_std_20)
 	add_test(NAME application-controls COMMAND application-state-tests)
+	add_executable(lighting-tests tests/lighting_tests.cpp source/application_state.cpp source/lighting.cpp source/light_gizmos.cpp source/dodecahedron.cpp)
+	target_include_directories(lighting-tests PRIVATE source)
+	target_link_libraries(lighting-tests PRIVATE glm::glm)
+	target_compile_features(lighting-tests PRIVATE cxx_std_20)
+	add_test(NAME camera-lighting-gizmos COMMAND lighting-tests)
+	find_package(Python3 QUIET COMPONENTS Interpreter)
+	find_program(SPIRV_DIS spirv-dis HINTS "$ENV{VULKAN_SDK}/Bin")
+	if(Python3_FOUND AND SPIRV_DIS)
+		add_test(NAME shader-memory-layout COMMAND ${Python3_EXECUTABLE}
+			${CMAKE_SOURCE_DIR}/tests/verify_shader_layout.py
+			--spirv-dis ${SPIRV_DIS} --shader-dir ${CMAKE_SOURCE_DIR}/shaders)
+	endif()
 endif()

@@ -97,21 +97,21 @@ int main() {
 		require(scene.objects.size() >= 2, "Scene must contain multiple objects");
 		for (const auto projection : { Projection::Perspective, Projection::Orthographic }) {
 			scene.camera.projection = projection;
-			const auto uniforms = scene.uniforms(16.0f / 9.0f);
-			require(!close(uniforms[0].mvp, uniforms[1].mvp), "Objects share their transform uniform state");
-			require(!close(glm::vec3(uniforms[0].user_color), glm::vec3(uniforms[1].user_color)),
+			const auto uniforms = scene.objectUniforms();
+			require(!close(uniforms[0].model, uniforms[1].model), "Objects share their transform uniform state");
+			require(!close(glm::vec3(uniforms[0].albedo), glm::vec3(uniforms[1].albedo)),
 			        "Objects share their color uniform state");
 		}
-		const auto initial_uniforms = scene.uniforms(1.6f);
+		const auto initial_uniforms = scene.objectUniforms();
 		scene.objects[0].transform.position.x += 0.4f;
-		scene.objects[0].user_color = { 0.2f, 0.8f, 0.3f };
-		const auto edited_uniforms = scene.uniforms(1.6f);
-		require(!close(edited_uniforms[0].mvp, initial_uniforms[0].mvp), "Object edit did not reach its MVP");
-		require(close(edited_uniforms[1].mvp, initial_uniforms[1].mvp)
-		        && close(glm::vec3(edited_uniforms[1].user_color), glm::vec3(initial_uniforms[1].user_color)),
+		scene.objects[0].material.albedo = { 0.2f, 0.8f, 0.3f };
+		const auto edited_uniforms = scene.objectUniforms();
+		require(!close(edited_uniforms[0].model, initial_uniforms[0].model), "Object edit did not reach its MVP");
+		require(close(edited_uniforms[1].model, initial_uniforms[1].model)
+		        && close(glm::vec3(edited_uniforms[1].albedo), glm::vec3(initial_uniforms[1].albedo)),
 		        "Editing Object 1 changed Object 2's uniform state");
 		scene.objects[0].resetTransform();
-		require(close(scene.uniforms(1.6f)[0].mvp, initial_uniforms[0].mvp), "Object reset lost its scene placement");
+		require(close(scene.objectUniforms()[0].model, initial_uniforms[0].model), "Object reset lost its scene placement");
 		scene.advance(0);
 		scene.objects[0].animation.playing = true;
 		scene.advance(1);

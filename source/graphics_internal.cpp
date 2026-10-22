@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <vector>
+#include <stdexcept>
+#include <string_view>
 
 #include <vulkan/vulkan.h>
 
@@ -13,8 +15,16 @@
 #pragma warning(push)
 #pragma warning(disable: 4100 4189 4324)
 #endif // _MSC_VER
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif // _MSC_VER
@@ -29,6 +39,16 @@ GLFWwindow* glfw_window;
 
 VkInstance vk_instance;
 uint32_t vk_api_version;
+VkDebugUtilsMessengerEXT vk_debug_messenger;
+bool imgui_initialized = false;
+VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* data, void*) {
+	if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ++context.validation_errors;
+	if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) ++context.validation_warnings;
+	std::cerr << "Validation " << ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "Error: " : "Warning: ")
+	          << data->pMessage << '\n';
+	return VK_FALSE;
+}
 VkSurfaceKHR vk_surface;
 
 VkSwapchainKHR vk_swapchain;
@@ -76,6 +96,27 @@ VkFormat selectDepthFormat(VkPhysicalDevice physical_device) {
 	}
 
 	return VK_FORMAT_UNDEFINED;
+}
+
+bool initializeImGuiBackend() {
+	const uint32_t swapchain_images_count = uint32_t(vk_swapchain_images.size());
+	ImGui_ImplVulkan_InitInfo init = {
+		.ApiVersion = vk_api_version,
+		.Instance = vk_instance,
+		.PhysicalDevice = context.physical_device,
+		.Device = context.device,
+		.QueueFamily = context.graphics_queue_index,
+		.Queue = context.graphics_queue,
+		.DescriptorPool = vk_imgui_descriptor_pool,
+		.MinImageCount = swapchain_images_count,
+		.ImageCount = swapchain_images_count,
+		.PipelineInfoMain = {
+			.RenderPass = vk_imgui_render_pass,
+		},
+	};
+
+	imgui_initialized = ImGui_ImplVulkan_Init(&init);
+	return imgui_initialized;
 }
 
 bool initializeImGUI() {
@@ -201,22 +242,7 @@ bool initializeImGUI() {
 		return false;
 	}
 
-	ImGui_ImplVulkan_InitInfo init = {
-		.ApiVersion = vk_api_version,
-		.Instance = vk_instance,
-		.PhysicalDevice = context.physical_device,
-		.Device = context.device,
-		.QueueFamily = context.graphics_queue_index,
-		.Queue = context.graphics_queue,
-		.DescriptorPool = vk_imgui_descriptor_pool,
-		.MinImageCount = swapchain_images_count,
-		.ImageCount = swapchain_images_count,
-		.PipelineInfoMain = {
-			.RenderPass = vk_imgui_render_pass,
-		},
-	};
-
-	return ImGui_ImplVulkan_Init(&init);
+	return initializeImGuiBackend();
 }
 
 void drawImGUI() {
@@ -282,12 +308,16 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 		vkDestroyImageView(context.device, vk_swapchain_image_views[i], nullptr);
 	}
 
+	vk_imgui_framebuffers.clear();
+	vk_framebuffers.clear();
+	vk_swapchain_image_views.clear();
 	vkDestroySwapchainKHR(context.device, vk_swapchain, nullptr);
 
 	vk_swapchain = vkb_swapchain.swapchain;
 	context.swapchain_format = vkb_swapchain.image_format;
 	context.swapchain_extent = vkb_swapchain.extent;
 
+	const auto previous_image_count = vk_swapchain_images.size();
 	auto swapchain_images = vkb_swapchain.get_images().value();
 	auto swapchain_image_views = vkb_swapchain.get_image_views().value();
 
@@ -296,6 +326,9 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 
 	vkDestroyImageView(context.device, vk_image_view_depth_buffer, nullptr);
 	vmaDestroyImage(context.allocator, vk_image_depth_buffer, vma_allocation_depth_buffer);
+	vk_image_view_depth_buffer = VK_NULL_HANDLE;
+	vk_image_depth_buffer = VK_NULL_HANDLE;
+	vma_allocation_depth_buffer = VK_NULL_HANDLE;
 
 	const VkImageCreateInfo depth_buffer = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -392,6 +425,16 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 		}
 	}
 
+	for (auto semaphore : vk_semaphores_image_finished) vkDestroySemaphore(context.device, semaphore, nullptr);
+	vk_semaphores_image_finished.assign(swapchain_images_count, VK_NULL_HANDLE);
+	const VkSemaphoreCreateInfo semaphore_info = { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+	for (auto& semaphore : vk_semaphores_image_finished) {
+		if (vkCreateSemaphore(context.device, &semaphore_info, nullptr, &semaphore) != VK_SUCCESS) return false;
+	}
+	if (previous_image_count != swapchain_images_count) {
+		ImGui_ImplVulkan_Shutdown(); imgui_initialized = false;
+		if (!initializeImGuiBackend()) return false;
+	}
 	vk_swapchain_resize_require = false;
 
 	return true;
@@ -401,16 +444,29 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 
 Context context;
 
-bool initialize(GLFWwindow* const window) {
+bool initializeImpl(GLFWwindow* const window) {
 	glfw_window = window;
 	vkb::InstanceBuilder ib;
 
 	auto ibr = ib.require_api_version(VK_MAKE_VERSION(1, 1, 0))
 				 .request_validation_layers()
+				 .set_debug_callback(validationCallback)
+				 .set_debug_messenger_severity(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+				                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
 				 .build();
 
+	if (!ibr) { std::cerr << ibr.error().message() << '\n'; return false; }
 	auto vkb_instance = ibr.value();
 	vk_instance = vkb_instance.instance;
+	vk_debug_messenger = vkb_instance.debug_messenger;
+	uint32_t layer_count = 0;
+	vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+	std::vector<VkLayerProperties> layers(layer_count);
+	vkEnumerateInstanceLayerProperties(&layer_count, layers.data());
+	for (const auto& layer : layers) {
+		if (std::string_view(layer.layerName) == "VK_LAYER_KHRONOS_validation") context.validation_enabled = true;
+	}
+	std::cout << "Vulkan validation layers: " << (context.validation_enabled ? "enabled" : "unavailable") << '\n';
 	vk_api_version = vkb_instance.api_version;
 
 	if (glfwCreateWindowSurface(vk_instance, window, nullptr, &vk_surface) != VK_SUCCESS) {
@@ -450,6 +506,9 @@ bool initialize(GLFWwindow* const window) {
 
 	context.physical_device = vkb_device.physical_device;
 	context.device = vkb_device.device;
+	VkPhysicalDeviceProperties device_properties;
+	vkGetPhysicalDeviceProperties(context.physical_device, &device_properties);
+	std::cout << "GPU: " << device_properties.deviceName << '\n';
 
 	if (auto result = vkb_device.get_queue(vkb::QueueType::graphics); result) {
 		context.graphics_queue = result.value();
@@ -701,45 +760,61 @@ bool initialize(GLFWwindow* const window) {
 	return true;
 }
 
+bool initialize(GLFWwindow* const window) {
+	try { if (initializeImpl(window)) return true; }
+	catch (const std::exception& e) { std::cerr << "Graphics initialization: " << e.what() << '\n'; }
+	shutdown();
+	return false;
+}
+
 void shutdown() {
-	vkQueueWaitIdle(context.graphics_queue);
+	if (context.device) {
+		if (context.graphics_queue) vkQueueWaitIdle(context.graphics_queue);
 
-	ImGui_ImplVulkan_Shutdown();
+		if (imgui_initialized) { ImGui_ImplVulkan_Shutdown(); imgui_initialized = false; }
 
-	vkDestroyCommandPool(context.device, vk_imgui_command_pool, nullptr);
-	for (size_t i = 0, n = vk_imgui_framebuffers.size(); i < n; ++i) {
-		vkDestroyFramebuffer(context.device, vk_imgui_framebuffers[i], nullptr);
+		vkDestroyCommandPool(context.device, vk_imgui_command_pool, nullptr);
+		for (size_t i = 0, n = vk_imgui_framebuffers.size(); i < n; ++i) {
+			vkDestroyFramebuffer(context.device, vk_imgui_framebuffers[i], nullptr);
+		}
+		vkDestroyRenderPass(context.device, vk_imgui_render_pass, nullptr);
+		vkDestroyDescriptorPool(context.device, vk_imgui_descriptor_pool, nullptr);
+
+		vkDestroyCommandPool(context.device, vk_command_pool, nullptr);
+
+		vkDestroyFence(context.device, vk_fence_frame_in_flight, nullptr);
+		for (size_t i = 0, n = vk_semaphores_image_finished.size(); i < n; ++i) {
+			vkDestroySemaphore(context.device, vk_semaphores_image_finished[i], nullptr);
+		}
+		vkDestroySemaphore(context.device, vk_semaphore_image_available, nullptr);
+
+		for (size_t i = 0, n = vk_framebuffers.size(); i < n; ++i) {
+			vkDestroyFramebuffer(context.device, vk_framebuffers[i], nullptr);
+		}
+		vkDestroyRenderPass(context.device, context.render_pass, nullptr);
+
+		vkDestroyImageView(context.device, vk_image_view_depth_buffer, nullptr);
+		if (context.allocator && vk_image_depth_buffer) vmaDestroyImage(context.allocator, vk_image_depth_buffer, vma_allocation_depth_buffer);
+
+		for (size_t i = 0, n = vk_swapchain_image_views.size(); i < n; ++i) {
+			vkDestroyImageView(context.device, vk_swapchain_image_views[i], nullptr);
+		}
+		vkDestroySwapchainKHR(context.device, vk_swapchain, nullptr);
+
+		if (context.allocator) vmaDestroyAllocator(context.allocator);
+
+		vkDestroyDevice(context.device, nullptr);
+		context.device = VK_NULL_HANDLE;
 	}
-	vkDestroyRenderPass(context.device, vk_imgui_render_pass, nullptr);
-	vkDestroyDescriptorPool(context.device, vk_imgui_descriptor_pool, nullptr);
 
-	vkDestroyCommandPool(context.device, vk_command_pool, nullptr);
-
-	vkDestroyFence(context.device, vk_fence_frame_in_flight, nullptr);
-	for (size_t i = 0, n = vk_swapchain_images.size(); i < n; ++i) {
-		vkDestroySemaphore(context.device, vk_semaphores_image_finished[i], nullptr);
+	if (vk_instance) {
+		vkDestroySurfaceKHR(vk_instance, vk_surface, nullptr);
+		vkb::destroy_debug_utils_messenger(vk_instance, vk_debug_messenger);
+		vkDestroyInstance(vk_instance, nullptr);
+		vk_instance = VK_NULL_HANDLE;
 	}
-	vkDestroySemaphore(context.device, vk_semaphore_image_available, nullptr);
-
-	for (size_t i = 0, n = vk_swapchain_images.size(); i < n; ++i) {
-		vkDestroyFramebuffer(context.device, vk_framebuffers[i], nullptr);
-	}
-	vkDestroyRenderPass(context.device, context.render_pass, nullptr);
-
-	vkDestroyImageView(context.device, vk_image_view_depth_buffer, nullptr);
-	vmaDestroyImage(context.allocator, vk_image_depth_buffer, vma_allocation_depth_buffer);
-
-	for (size_t i = 0, n = vk_swapchain_images.size(); i < n; ++i) {
-		vkDestroyImageView(context.device, vk_swapchain_image_views[i], nullptr);
-	}
-	vkDestroySwapchainKHR(context.device, vk_swapchain, nullptr);
-
-	vmaDestroyAllocator(context.allocator);
-
-	vkDestroyDevice(context.device, nullptr);
-
-	vkDestroySurfaceKHR(vk_instance, vk_surface, nullptr);
-	vkDestroyInstance(vk_instance, nullptr);
+	std::cout << "Validation result: errors=" << context.validation_errors
+	          << ", warnings=" << context.validation_warnings << '\n';
 }
 
 void resize(uint32_t width, uint32_t height) {
@@ -754,7 +829,7 @@ void resize(uint32_t width, uint32_t height) {
 }
 
 FrameData prepare() {
-	vkWaitForFences(context.device, 1, &vk_fence_frame_in_flight, VK_TRUE, UINT64_MAX);
+	if (vkWaitForFences(context.device, 1, &vk_fence_frame_in_flight, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return {};
 
 retry_acquire:
 	switch (vkAcquireNextImageKHR(context.device, vk_swapchain, UINT64_MAX,
@@ -778,7 +853,7 @@ retry_acquire:
 		return {};
 	}
 
-	vkResetFences(context.device, 1, &vk_fence_frame_in_flight);
+	if (vkResetFences(context.device, 1, &vk_fence_frame_in_flight) != VK_SUCCESS) return {};
 
 	return {
 		.framebuffer = vk_framebuffers[vk_swapchain_current_image],
@@ -806,7 +881,8 @@ void submitAndPresent() {
 		.pSignalSemaphores = &vk_semaphores_image_finished[vk_swapchain_current_image],
 	};
 
-	vkQueueSubmit(context.graphics_queue, 1, &submit, vk_fence_frame_in_flight);
+	if (vkQueueSubmit(context.graphics_queue, 1, &submit, vk_fence_frame_in_flight) != VK_SUCCESS)
+		throw std::runtime_error("vkQueueSubmit failed");
 
 	const VkPresentInfoKHR present = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -821,7 +897,8 @@ void submitAndPresent() {
 	if (result == VK_ERROR_OUT_OF_DATE_KHR ||
 	    result == VK_SUBOPTIMAL_KHR ||
 	    vk_swapchain_resize_require) {
-		rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
+		if (!rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height))
+			throw std::runtime_error("Swapchain recreation failed");
 	} else if (result != VK_SUCCESS) {
 		std::cerr << "Failed to present Vulkan swapchain image\n";
 	}
