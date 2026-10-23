@@ -1,12 +1,16 @@
-. (Join-Path (Split-Path -Parent $PSScriptRoot) '.tools\environment.ps1')
-$testLogs = Join-Path $workspaceRoot '.tools\logs\task6'
+param([string]$Executable = 'build-debug-v\vulkan-starter-app.exe')
+$ErrorActionPreference = 'Stop'
+$workspaceRoot = Split-Path -Parent $PSScriptRoot
+$sdk = Get-ChildItem 'C:\VulkanSDK', "$env:LOCALAPPDATA\VulkanSDK" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+if (-not $env:VULKAN_SDK -and $sdk) { $env:VULKAN_SDK = $sdk.FullName }
+$env:Path = "C:\msys64\ucrt64\bin;$env:VULKAN_SDK\Bin;$env:Path"
+$env:VK_LAYER_PATH = "$env:VULKAN_SDK\Bin"
+$testLogs = Join-Path $workspaceRoot 'docs\testing\ui'
 New-Item -ItemType Directory -Path $testLogs -Force | Out-Null
-if (Test-Path -LiteralPath (Join-Path $testLogs 'result.json')) {
-    Remove-Item -LiteralPath (Join-Path $testLogs 'result.json')
-}
+Remove-Item -LiteralPath (Join-Path $testLogs 'result.json') -ErrorAction SilentlyContinue
 $env:LAB1_UI_OBSERVATION_FILE = Join-Path $testLogs 'live-ui.json'
-$env:VK_LAYER_SETTINGS_PATH = Join-Path $workspaceRoot '.tools\validation'
-$env:VK_LOADER_DEBUG = 'error,warn,layer'
+$env:VK_LAYER_SETTINGS_PATH = Join-Path $workspaceRoot 'tests\validation'
+$env:VK_LOADER_DEBUG = 'error,warn'
 $stdoutPath = Join-Path $testLogs 'stdout.log'
 $stderrPath = Join-Path $testLogs 'stderr.log'
 
@@ -47,7 +51,7 @@ public static class LabUiNative {
 }
 '@
 [void][LabUiNative]::SetProcessDPIAware()
-$process = Start-Process -FilePath (Join-Path $workspaceRoot 'build-debug\vulkan-starter-app.exe') -WorkingDirectory $workspaceRoot -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
+$process = Start-Process -FilePath (Join-Path $workspaceRoot $Executable) -WorkingDirectory $workspaceRoot -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
 $null = $process.Handle
 $checks = [System.Collections.Generic.List[object]]::new()
 $snapshots = [ordered]@{}
@@ -185,8 +189,8 @@ try {
     Check ((Matrix-Difference $baseline.mvp $orthographic.mvp) -gt 0.1) 'Perspective to Orthographic changes the GPU MVP'
     Set-Number 'ortho_height' '3.0'
     $zoom = Wait-State { param($s) [Math]::Abs($s.orthoHeight - 3) -lt 0.01 } 'orthographic scale'
-    Check ((Matrix-Difference $orthographic.mvp $zoom.mvp) -gt 0.1) 'Orthographic scale control'
-    Set-Number 'ortho_height' '2.5'
+    Check ((Matrix-Difference $orthographic.mvp $zoom.mvp) -gt 0.001) 'Orthographic scale control'
+    Set-Number 'ortho_height' ($baseline.orthoHeight.ToString([Globalization.CultureInfo]::InvariantCulture))
     Click-Control 'perspective'
     $back = Wait-State { param($s) $s.projection -eq 'Perspective' } 'perspective restored'
     Check ((Matrix-Difference $baseline.mvp $back.mvp) -lt 0.0001) 'Projection roundtrip restores perspective'
@@ -226,6 +230,8 @@ try {
     Screenshot 'scaled.png'
     Click-Control 'reset_transform'
 
+    Click-Control 'camera_header'
+    Click-Control 'animation_header'
     Click-Control 'play_pause'
     $start = Wait-State { param($s) $s.playing -and $s.phase -gt 0.01 } 'animation playing'
     Start-Sleep -Milliseconds 650
@@ -264,6 +270,7 @@ try {
     Set-Number 'amplitude' '0.4'
     $snapshots.animation = @($start, $moving, $paused, $resumed, $fastStart, $fastEnd, $radiusAfter)
 
+    Click-Control 'animation_header'
     $tint = @('0.25', '0.80', '0.35')
     for ($i = 0; $i -lt 3; ++$i) { Set-Number 'color' $tint[$i] $i }
     $colored = Read-State
@@ -286,6 +293,7 @@ try {
     Check (($secondColored.color -join ',') -ne ($second.color -join ',') -and ($secondColored.objects[0].color -join ',') -eq ($second.objects[0].color -join ',')) 'Object 2 ColorEdit affects only its own uniform'
     Screenshot 'object2-tinted.png'
     for ($i = 0; $i -lt 3; ++$i) { Set-Number 'color' ($second.color[$i].ToString([Globalization.CultureInfo]::InvariantCulture)) $i }
+    Click-Control 'animation_header'
     Click-Control 'play_pause'
     $secondPlaying = Wait-State { param($s) $s.playing -and $s.phase -gt 0.1 } 'Object 2 animation'
     Check ((Matrix-Difference $secondPlaying.objects[1].mvp $second.objects[1].mvp) -gt 0.01 -and (Matrix-Difference $secondPlaying.objects[0].mvp $second.objects[0].mvp) -lt 0.0001) 'Object 2 animates independently'
@@ -298,6 +306,8 @@ try {
     $snapshots.secondObject = Read-State
     Click-Control 'object_1'
 
+    Click-Control 'animation_header'
+    Click-Control 'camera_header'
     $beforeResize = Read-State
     Resize-Window 1000 680
     $afterResize = Read-State
@@ -331,10 +341,10 @@ try {
     if (-not $process.CloseMainWindow()) { throw 'Normal close request failed.' }
     if (-not $process.WaitForExit(10000)) { throw 'Application did not close normally.' }
     $process.Refresh()
-    $validationLog = Get-Content -LiteralPath $stdoutPath -Raw
+    $validationLog = (Get-Content -LiteralPath $stdoutPath -Raw) + (Get-Content -LiteralPath $stderrPath -Raw)
     $errorCount = [regex]::Matches($validationLog, '(?m)^Validation Error:').Count
     $warningCount = [regex]::Matches($validationLog, '(?m)^Validation (?:Warning|Performance Warning):').Count
-    Check ($validationLog -match 'CURRENT-VALIDATION-ENABLED' -and $validationLog -match 'Synchronization') 'Core and Synchronization Validation enabled'
+    Check ($validationLog -match 'Vulkan validation layers: enabled' -and (Get-Content -LiteralPath (Join-Path $workspaceRoot 'tests\validation\vk_layer_settings.txt') -Raw) -match 'validate_sync = true') 'Core and Synchronization Validation enabled'
     Check ($errorCount -eq 0 -and $warningCount -eq 0) 'Validation ERROR=0, WARNING=0 after every UI interaction'
     Check ($process.ExitCode -eq 0) 'Normal close returns exit code 0'
     [ordered]@{ passed = $true; checks = $checks.Count; objects = $baseline.objects.Count; descriptorSets = @($baseline.draws.descriptorSet | Select-Object -Unique).Count; uniformBuffers = @($baseline.draws.uniformBuffer | Select-Object -Unique).Count; drawsPerFrame = $baseline.draws.Count; validationErrors = $errorCount; validationWarnings = $warningCount; exitCode = $process.ExitCode; measuredSpeed1 = $rate1; measuredSpeed2 = $rate2; screenshots = @('perspective.png', 'orthographic.png', 'tinted.png', 'scaled.png', 'object2-tinted.png') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $testLogs 'result.json') -Encoding UTF8

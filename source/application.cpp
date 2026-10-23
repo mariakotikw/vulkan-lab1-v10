@@ -2,6 +2,8 @@
 #include "application_state.hpp"
 #include "dodecahedron.hpp"
 #include "graphics.hpp"
+#include "application_ui.hpp"
+#include "light_gizmos.hpp"
 
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -33,6 +35,14 @@ SceneState scene;
 graphics::Buffer vertex_buffer;
 graphics::Buffer index_buffer;
 std::array<graphics::Buffer, object_count> object_uniform_buffers;
+graphics::Buffer scene_uniform_buffer;
+graphics::Buffer point_light_buffer, spot_light_buffer;
+graphics::Buffer gizmo_triangle_buffer, gizmo_line_buffer;
+VkDescriptorSetLayout scene_set_layout = VK_NULL_HANDLE;
+VkDescriptorSet scene_descriptor_set = VK_NULL_HANDLE;
+VkPipeline gizmo_triangle_pipeline = VK_NULL_HANDLE;
+VkPipeline gizmo_line_pipeline = VK_NULL_HANDLE;
+uint32_t gizmo_triangle_count = 0, gizmo_line_count = 0;
 VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
 VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
 std::array<VkDescriptorSet, object_count> descriptor_sets{};
@@ -84,71 +94,106 @@ struct ShaderModule {
 	}
 };
 
+// Called only after prepare() has waited for the one in-flight frame's fence.
+// Allocate first so an allocation failure leaves the existing buffer usable.
+bool ensureCapacity(graphics::Buffer& buffer, VkDeviceSize required, VkBufferUsageFlags usage) {
+	if (buffer.size >= required) return false;
+	auto capacity = std::max(required, buffer.size * 2);
+	if (usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(graphics::internal::context.physical_device, &properties);
+		capacity = std::min(capacity, static_cast<VkDeviceSize>(properties.limits.maxStorageBufferRange));
+		if (capacity < required) throw std::runtime_error("Light array exceeds maxStorageBufferRange");
+	}
+	auto replacement = graphics::createMappedBuffer(capacity, usage);
+	graphics::destroyBuffer(buffer);
+	buffer = replacement;
+	return true;
+}
+
+void updateSceneDescriptors() {
+	const VkDescriptorBufferInfo infos[] = {
+		{ scene_uniform_buffer.handle, 0, sizeof(SceneUniform) },
+		{ point_light_buffer.handle, 0, point_light_buffer.size },
+		{ spot_light_buffer.handle, 0, spot_light_buffer.size }
+	};
+	VkWriteDescriptorSet writes[3]{};
+	for (uint32_t i = 0; i < 3; ++i) {
+		writes[i] = { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = scene_descriptor_set, .dstBinding = i, .descriptorCount = 1,
+			.descriptorType = i == 0 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.pBufferInfo = &infos[i] };
+	}
+	vkUpdateDescriptorSets(graphics::internal::context.device, 3, writes, 0, nullptr);
+}
+
 void createDescriptors() {
 	const auto device = graphics::internal::context.device;
-	const VkDescriptorSetLayoutBinding binding = {
-		.binding = 0,
-		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		.descriptorCount = 1,
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+	const VkDescriptorSetLayoutBinding scene_bindings[] = {
+		{ 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
 	};
-	const VkDescriptorSetLayoutCreateInfo layout_info = {
+	const VkDescriptorSetLayoutCreateInfo scene_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.bindingCount = 1,
-		.pBindings = &binding,
+		.bindingCount = 3, .pBindings = scene_bindings
 	};
-	check(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &descriptor_set_layout),
-	      "vkCreateDescriptorSetLayout");
-	const VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, object_count };
+	check(vkCreateDescriptorSetLayout(device, &scene_info, nullptr, &scene_set_layout), "scene layout");
+	const VkDescriptorSetLayoutBinding binding = {
+		0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr
+	};
+	const VkDescriptorSetLayoutCreateInfo object_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 1, .pBindings = &binding
+	};
+	check(vkCreateDescriptorSetLayout(device, &object_info, nullptr, &descriptor_set_layout), "object layout");
+	const VkDescriptorPoolSize pool_sizes[] = {
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, object_count + 1 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 }
+	};
 	const VkDescriptorPoolCreateInfo pool_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.maxSets = object_count,
-		.poolSizeCount = 1,
-		.pPoolSizes = &pool_size,
+		.maxSets = object_count + 1, .poolSizeCount = 2, .pPoolSizes = pool_sizes
 	};
-	check(vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool), "vkCreateDescriptorPool");
+	check(vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool), "descriptor pool");
+	const VkDescriptorSetAllocateInfo scene_allocate = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = descriptor_pool,
+		.descriptorSetCount = 1, .pSetLayouts = &scene_set_layout
+	};
+	check(vkAllocateDescriptorSets(device, &scene_allocate, &scene_descriptor_set), "scene descriptor");
 	std::array<VkDescriptorSetLayout, object_count> layouts;
 	layouts.fill(descriptor_set_layout);
-	const VkDescriptorSetAllocateInfo allocate_info = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.descriptorPool = descriptor_pool,
-		.descriptorSetCount = object_count,
-		.pSetLayouts = layouts.data(),
+	const VkDescriptorSetAllocateInfo allocate = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = descriptor_pool,
+		.descriptorSetCount = object_count, .pSetLayouts = layouts.data()
 	};
-	check(vkAllocateDescriptorSets(device, &allocate_info, descriptor_sets.data()), "vkAllocateDescriptorSets");
-	for (size_t i = 0; i < descriptor_sets.size(); ++i) {
-		const VkDescriptorBufferInfo buffer_info = {
-			.buffer = object_uniform_buffers[i].handle,
-			.offset = 0,
-			.range = sizeof(TransformUniform),
-		};
+	check(vkAllocateDescriptorSets(device, &allocate, descriptor_sets.data()), "object descriptors");
+	updateSceneDescriptors();
+	for (size_t i = 0; i < object_count; ++i) {
+		const VkDescriptorBufferInfo info = { object_uniform_buffers[i].handle, 0, sizeof(ObjectUniform) };
 		const VkWriteDescriptorSet write = {
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = descriptor_sets[i],
-			.dstBinding = 0,
-			.descriptorCount = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			.pBufferInfo = &buffer_info,
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = descriptor_sets[i], .dstBinding = 0,
+			.descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .pBufferInfo = &info
 		};
 		vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
-		ui_observer::descriptorWrite(reinterpret_cast<uintptr_t>(write.dstSet),
-		                             reinterpret_cast<uintptr_t>(buffer_info.buffer));
+		ui_observer::descriptorWrite(reinterpret_cast<uintptr_t>(write.dstSet), reinterpret_cast<uintptr_t>(info.buffer));
 #endif
 	}
 }
 
-void createPipeline() {
+void createPipeline(bool gizmo = false, bool lines = false) {
 	const auto& context = graphics::internal::context;
+	const VkDescriptorSetLayout layouts[] = { scene_set_layout, descriptor_set_layout };
 	const VkPipelineLayoutCreateInfo layout_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		.setLayoutCount = 1,
-		.pSetLayouts = &descriptor_set_layout,
+		.setLayoutCount = 2,
+		.pSetLayouts = layouts,
 	};
-	check(vkCreatePipelineLayout(context.device, &layout_info, nullptr, &pipeline_layout),
+	if (!gizmo) check(vkCreatePipelineLayout(context.device, &layout_info, nullptr, &pipeline_layout),
 	      "vkCreatePipelineLayout");
-	const ShaderModule vertex_shader("shaders/dodecahedron.vert.spv");
-	const ShaderModule fragment_shader("shaders/dodecahedron.frag.spv");
+	const ShaderModule vertex_shader(gizmo ? "shaders/gizmo.vert.spv" : "shaders/dodecahedron.vert.spv");
+	const ShaderModule fragment_shader(gizmo ? "shaders/gizmo.frag.spv" : "shaders/dodecahedron.frag.spv");
 	const VkPipelineShaderStageCreateInfo stages[] = {
 		{ .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		  .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = vertex_shader.handle, .pName = "main" },
@@ -156,13 +201,13 @@ void createPipeline() {
 		  .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = fragment_shader.handle, .pName = "main" },
 	};
 	const VkVertexInputBindingDescription binding = {
-		.binding = 0, .stride = sizeof(geometry::Vertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+		.binding = 0, .stride = static_cast<uint32_t>(gizmo ? sizeof(GizmoVertex) : sizeof(geometry::Vertex)), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
 	};
 	const VkVertexInputAttributeDescription attributes[] = {
 		{ .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT,
 		  .offset = offsetof(geometry::Vertex, position) },
 		{ .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT,
-		  .offset = offsetof(geometry::Vertex, color) },
+		  .offset = static_cast<uint32_t>(gizmo ? offsetof(GizmoVertex, color) : offsetof(geometry::Vertex, normal)) },
 	};
 	const VkPipelineVertexInputStateCreateInfo vertex_input = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -171,7 +216,7 @@ void createPipeline() {
 	};
 	const VkPipelineInputAssemblyStateCreateInfo assembly = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.topology = lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
 	};
 	const VkPipelineViewportStateCreateInfo viewport = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -180,7 +225,7 @@ void createPipeline() {
 	const VkPipelineRasterizationStateCreateInfo rasterization = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
 		.polygonMode = VK_POLYGON_MODE_FILL,
-		.cullMode = VK_CULL_MODE_BACK_BIT,
+		.cullMode = gizmo ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT,
 		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
 		.lineWidth = 1.0f,
 	};
@@ -222,111 +267,33 @@ void createPipeline() {
 		.renderPass = context.render_pass,
 		.subpass = 0,
 	};
-	check(vkCreateGraphicsPipelines(context.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline),
+	check(vkCreateGraphicsPipelines(context.device, VK_NULL_HANDLE, 1, &info, nullptr, gizmo ? (lines ? &gizmo_line_pipeline : &gizmo_triangle_pipeline) : &pipeline),
 	      "vkCreateGraphicsPipelines");
 }
 
-void drawControls() {
-	const auto display = ImGui::GetIO().DisplaySize;
-	ImGui::SetNextWindowPos(ImVec2(std::max(8.0f, display.x - 376.0f), 16.0f));
-	ImGui::SetNextWindowSize(ImVec2(360.0f, std::min(600.0f, display.y - 32.0f)));
-	const auto flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
-	if (ImGui::Begin("Lab 1 Controls", nullptr, flags)) {
-		ImGui::RadioButton("Object 1", &scene.selected_object, 0);
-		LAB1_OBSERVE_ITEM("object_1");
-		ImGui::SameLine();
-		ImGui::RadioButton("Object 2", &scene.selected_object, 1);
-		LAB1_OBSERVE_ITEM("object_2");
-		auto& controls = scene.objects[scene.selected_object];
-		auto& camera = scene.camera;
-		if (ImGui::CollapsingHeader("Projection", ImGuiTreeNodeFlags_DefaultOpen)) {
-			if (ImGui::RadioButton("Perspective", camera.projection == Projection::Perspective)) {
-				camera.projection = Projection::Perspective;
-			}
-			LAB1_OBSERVE_ITEM("perspective");
-			ImGui::SameLine();
-			if (ImGui::RadioButton("Orthographic", camera.projection == Projection::Orthographic)) {
-				camera.projection = Projection::Orthographic;
-			}
-			LAB1_OBSERVE_ITEM("orthographic");
-			if (camera.projection == Projection::Perspective) {
-				ImGui::SliderFloat("FOV", &camera.fov_degrees, 15.0f, 90.0f, "%.1f deg", ImGuiSliderFlags_AlwaysClamp);
-				LAB1_OBSERVE_ITEM("fov");
-			} else {
-				ImGui::DragFloat("Half height", &camera.ortho_half_height, 0.02f, 1.0f, 8.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-				LAB1_OBSERVE_ITEM("ortho_height");
-			}
-		}
-		if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-			ImGui::TextUnformatted("Position X / Y / Z");
-			ImGui::SetNextItemWidth(-1);
-			ImGui::DragFloat3("##position", glm::value_ptr(controls.transform.position), 0.02f);
-			LAB1_OBSERVE_ITEM("position");
-			ImGui::TextUnformatted("Rotation X / Y / Z (degrees)");
-			ImGui::SetNextItemWidth(-1);
-			ImGui::DragFloat3("##rotation", glm::value_ptr(controls.transform.rotation_degrees), 0.5f);
-			LAB1_OBSERVE_ITEM("rotation");
-			ImGui::TextUnformatted("Scale X / Y / Z");
-			ImGui::SetNextItemWidth(-1);
-			ImGui::DragFloat3("##scale", glm::value_ptr(controls.transform.scale), 0.01f,
-			                  0.05f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-			LAB1_OBSERVE_ITEM("scale");
-			if (ImGui::Button("Reset Transform")) controls.resetTransform();
-			LAB1_OBSERVE_ITEM("reset_transform");
-		}
-		if (ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen)) {
-			if (ImGui::Button(controls.animation.playing ? "Pause" : "Play", ImVec2(64, 0))) {
-				controls.animation.playing = !controls.animation.playing;
-			}
-			LAB1_OBSERVE_ITEM("play_pause");
-			ImGui::SameLine();
-			if (ImGui::Button("Reset Animation")) controls.animation.reset();
-			LAB1_OBSERVE_ITEM("reset_animation");
-			ImGui::SetNextItemWidth(180);
-			ImGui::DragFloat("Speed", &controls.animation.speed, 0.02f, 0.1f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-			LAB1_OBSERVE_ITEM("speed");
-			ImGui::SetNextItemWidth(180);
-			ImGui::DragFloat("Radius", &controls.animation.radius, 0.01f, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-			LAB1_OBSERVE_ITEM("radius");
-			ImGui::SetNextItemWidth(180);
-			ImGui::DragFloat("Vertical amplitude", &controls.animation.vertical_amplitude, 0.01f, 0.0f, 1.5f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-			LAB1_OBSERVE_ITEM("amplitude");
-			ImGui::TextWrapped("Position is the base offset; animation adds motion and rotation.");
-		}
-		if (ImGui::CollapsingHeader("Color", ImGuiTreeNodeFlags_DefaultOpen)) {
-			ImGui::TextUnformatted("Vertex color multiplier (RGB)");
-			ImGui::SetNextItemWidth(-1);
-			ImGui::ColorEdit3("##tint", glm::value_ptr(controls.user_color), ImGuiColorEditFlags_Float);
-			LAB1_OBSERVE_ITEM("color");
-			ImGui::TextWrapped("White keeps the procedural vertex colors.");
-		}
-	}
-	ImGui::End();
-}
 
 }
 
 bool initialize() {
 	try {
-		const auto mesh = geometry::makeDodecahedron();
+		const auto mesh = geometry::makeFlatDodecahedron();
 		vertex_buffer = graphics::createMappedBuffer(sizeof(mesh.vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 		graphics::writeBuffer(vertex_buffer, mesh.vertices.data(), sizeof(mesh.vertices));
 		index_buffer = graphics::createMappedBuffer(sizeof(mesh.indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 		graphics::writeBuffer(index_buffer, mesh.indices.data(), sizeof(mesh.indices));
 		index_count = static_cast<uint32_t>(mesh.indices.size());
 		for (auto& buffer : object_uniform_buffers) {
-			buffer = graphics::createMappedBuffer(sizeof(TransformUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+			buffer = graphics::createMappedBuffer(sizeof(ObjectUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 		}
+		scene_uniform_buffer = graphics::createMappedBuffer(sizeof(SceneUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+		point_light_buffer = graphics::createMappedBuffer(sizeof(GpuPointLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+		spot_light_buffer = graphics::createMappedBuffer(sizeof(GpuSpotLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 		createDescriptors();
 		createPipeline();
-		std::cout << "Dodecahedron: 20 vertices, 12 pentagons, 36 triangles, 108 indices\n";
-		std::cout << "Scene: objects=" << scene.objects.size() << ", descriptor sets=" << descriptor_sets.size()
-		          << ", uniform buffers=" << object_uniform_buffers.size()
-		          << ", vertex buffers=1, index buffers=1, graphics pipelines=1\n";
-		for (size_t i = 0; i < descriptor_sets.size(); ++i) {
-			std::cout << "Object " << i + 1 << ": descriptor set=" << descriptor_sets[i]
-			          << ", uniform buffer=" << object_uniform_buffers[i].handle << '\n';
-		}
+		createPipeline(true, false);
+		createPipeline(true, true);
+		std::cout << "Lab 2: 20 geometric / 60 flat vertices, 12 pentagons, 36 triangles; "
+		          << "Scene set 0 (UBO + point/spot SSBO), Object set 1 (2 UBOs)\n";
 		return true;
 	} catch (const std::exception& error) {
 		std::cerr << "Application initialization: " << error.what() << '\n';
@@ -339,17 +306,63 @@ void shutdown() {
 	auto& context = graphics::internal::context;
 	vkQueueWaitIdle(context.graphics_queue);
 	vkDestroyPipeline(context.device, pipeline, nullptr);
+	vkDestroyPipeline(context.device, gizmo_triangle_pipeline, nullptr);
+	vkDestroyPipeline(context.device, gizmo_line_pipeline, nullptr);
 	vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);
 	vkDestroyDescriptorPool(context.device, descriptor_pool, nullptr);
 	vkDestroyDescriptorSetLayout(context.device, descriptor_set_layout, nullptr);
-	pipeline = VK_NULL_HANDLE;
+	vkDestroyDescriptorSetLayout(context.device, scene_set_layout, nullptr);
+	pipeline = gizmo_triangle_pipeline = gizmo_line_pipeline = VK_NULL_HANDLE;
+	scene_set_layout = VK_NULL_HANDLE;
+	scene_descriptor_set = VK_NULL_HANDLE;
 	pipeline_layout = VK_NULL_HANDLE;
 	descriptor_pool = VK_NULL_HANDLE;
 	descriptor_set_layout = VK_NULL_HANDLE;
 	descriptor_sets.fill(VK_NULL_HANDLE);
 	for (auto& buffer : object_uniform_buffers) graphics::destroyBuffer(buffer);
+	graphics::destroyBuffer(scene_uniform_buffer);
+	graphics::destroyBuffer(point_light_buffer);
+	graphics::destroyBuffer(spot_light_buffer);
+	graphics::destroyBuffer(gizmo_triangle_buffer);
+	graphics::destroyBuffer(gizmo_line_buffer);
 	graphics::destroyBuffer(index_buffer);
 	graphics::destroyBuffer(vertex_buffer);
+}
+
+void smokeStep(uint32_t frame) {
+	if (frame % 60 != 0) return;
+	const uint32_t phase = frame / 60;
+	std::cout << "SMOKE phase " << phase << '\n';
+	if (phase == 1 || phase == 3) {
+		scene.point_lights.clear(); scene.spot_lights.clear();
+	} else if (phase == 2) {
+		for (int i = 0; i < 33; ++i) {
+			scene.addPointLight(); scene.addSpotLight();
+			scene.point_lights.back().position.x = (i - 16) * 0.15f;
+			scene.point_lights.back().intensity = 0.05f;
+			scene.spot_lights.back().intensity = 0.05f;
+		}
+	} else if (phase == 4) {
+		scene.addPointLight(); scene.addSpotLight();
+		scene.spot_lights[0].inner_degrees = scene.spot_lights[0].outer_degrees = 25;
+		scene.spot_lights[0].direction = glm::vec3(0);
+		scene.objects[0].transform.scale = { 0.3f, 0.8f, 1.1f };
+		scene.objects[0].material.shininess = 128;
+	} else if (phase == 5) {
+		scene.spot_lights[0].inner_degrees = 70; scene.spot_lights[0].outer_degrees = 15;
+		scene.spot_lights[0].direction = { 1, -1, -1 };
+		scene.show_light_gizmos = false;
+		scene.camera.position.x += 1; scene.camera.yaw_degrees -= 8;
+	} else if (phase == 6) {
+		scene.show_light_gizmos = true;
+		scene.camera.projection = Projection::Orthographic;
+	} else if (phase == 7) {
+		scene = SceneState{};
+		scene.objects[0].animation.playing = true;
+	} else if (phase == 8) {
+		scene.objects[0].animation.playing = false;
+		scene.objects[0].animation.reset();
+	}
 }
 
 void update(double time) {
@@ -357,16 +370,53 @@ void update(double time) {
 	ui_observer::beginFrame();
 #endif
 	scene.advance(time);
-	drawControls();
+	drawControls(scene);
 	scene.sanitize();
 	const auto extent = sceneExtent();
 	const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-	const auto uniforms = scene.uniforms(aspect);
+	const auto scene_uniform = scene.sceneUniform(aspect);
+	graphics::writeBuffer(scene_uniform_buffer, &scene_uniform, sizeof(scene_uniform));
+	std::vector<GpuPointLight> points;
+	std::vector<GpuSpotLight> spots;
+	for (const auto& light : scene.point_lights) points.push_back(light.gpu());
+	for (const auto& light : scene.spot_lights) spots.push_back(light.gpu());
+	// Non-empty descriptor ranges remain valid even when the logical light count is zero.
+	if (points.empty()) points.emplace_back(GpuPointLight{});
+	if (spots.empty()) spots.emplace_back(GpuSpotLight{});
+	const VkDeviceSize point_bytes = points.size() * sizeof(GpuPointLight);
+	const VkDeviceSize spot_bytes = spots.size() * sizeof(GpuSpotLight);
+	VkPhysicalDeviceProperties properties;
+	vkGetPhysicalDeviceProperties(graphics::internal::context.physical_device, &properties);
+	if (point_bytes > properties.limits.maxStorageBufferRange || spot_bytes > properties.limits.maxStorageBufferRange)
+		throw std::runtime_error("Light array exceeds maxStorageBufferRange");
+	const bool point_changed = ensureCapacity(point_light_buffer, point_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+	const bool spot_changed = ensureCapacity(spot_light_buffer, spot_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+	if (point_changed || spot_changed) updateSceneDescriptors();
+	graphics::writeBuffer(point_light_buffer, points.data(), point_bytes);
+	graphics::writeBuffer(spot_light_buffer, spots.data(), spot_bytes);
+	const auto gizmos = makeLightGizmos(scene);
+	gizmo_triangle_count = static_cast<uint32_t>(gizmos.triangles.size());
+	gizmo_line_count = static_cast<uint32_t>(gizmos.lines.size());
+	if (gizmo_triangle_count) {
+		const auto bytes = gizmos.triangles.size() * sizeof(GizmoVertex);
+		ensureCapacity(gizmo_triangle_buffer, bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+		graphics::writeBuffer(gizmo_triangle_buffer, gizmos.triangles.data(), bytes);
+	}
+	if (gizmo_line_count) {
+		const auto bytes = gizmos.lines.size() * sizeof(GizmoVertex);
+		ensureCapacity(gizmo_line_buffer, bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+		graphics::writeBuffer(gizmo_line_buffer, gizmos.lines.data(), bytes);
+	}
+	const auto uniforms = scene.objectUniforms();
 	for (size_t i = 0; i < object_uniform_buffers.size(); ++i) {
-		graphics::writeBuffer(object_uniform_buffers[i], &uniforms[i], sizeof(TransformUniform));
+		graphics::writeBuffer(object_uniform_buffers[i], &uniforms[i], sizeof(ObjectUniform));
 	}
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
 	ui_observer::state(scene, uniforms, time);
+	ui_observer::lighting(*static_cast<const SceneUniform*>(scene_uniform_buffer.mapped),
+	                     reinterpret_cast<uintptr_t>(scene_descriptor_set),
+	                     reinterpret_cast<uintptr_t>(point_light_buffer.handle),
+	                     reinterpret_cast<uintptr_t>(spot_light_buffer.handle));
 #endif
 }
 
@@ -385,7 +435,7 @@ void render(const graphics::internal::FrameData& fd) {
 
 	auto& context = graphics::internal::context;
 	const VkClearValue clear_values[] = {
-		{ .color = { .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } } },
+		{ .color = { .float32 = { 0.012f, 0.018f, 0.03f, 1.0f } } },
 		{ .depthStencil = { .depth = 1.0f, .stencil = 0 } },
 	};
 	const VkRenderPassBeginInfo render_pass_begin = {
@@ -411,17 +461,29 @@ void render(const graphics::internal::FrameData& fd) {
 	const VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &vertex_buffer.handle, &offset);
 	vkCmdBindIndexBuffer(fd.command_buffer, index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout,
+	                        0, 1, &scene_descriptor_set, 0, nullptr);
 	for (size_t i = 0; i < descriptor_sets.size(); ++i) {
 		vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		                        pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
+		                        pipeline_layout, 1, 1, &descriptor_sets[i], 0, nullptr);
 		vkCmdDrawIndexed(fd.command_buffer, index_count, 1, 0, 0, 0);
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
 		ui_observer::draw({ reinterpret_cast<uintptr_t>(descriptor_sets[i]),
 		                    reinterpret_cast<uintptr_t>(object_uniform_buffers[i].handle),
 		                    reinterpret_cast<uintptr_t>(pipeline), reinterpret_cast<uintptr_t>(vertex_buffer.handle),
 		                    reinterpret_cast<uintptr_t>(index_buffer.handle), index_count,
-		                    *static_cast<const TransformUniform*>(object_uniform_buffers[i].mapped) });
+		                    *static_cast<const ObjectUniform*>(object_uniform_buffers[i].mapped) });
 #endif
+	}
+	if (gizmo_triangle_count) {
+		vkCmdBindPipeline(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gizmo_triangle_pipeline);
+		vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &gizmo_triangle_buffer.handle, &offset);
+		vkCmdDraw(fd.command_buffer, gizmo_triangle_count, 1, 0, 0);
+	}
+	if (gizmo_line_count) {
+		vkCmdBindPipeline(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gizmo_line_pipeline);
+		vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &gizmo_line_buffer.handle, &offset);
+		vkCmdDraw(fd.command_buffer, gizmo_line_count, 1, 0, 0);
 	}
 	vkCmdEndRenderPass(fd.command_buffer);
 

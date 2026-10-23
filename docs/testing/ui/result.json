@@ -1,0 +1,20 @@
+﻿{
+    "passed":  true,
+    "checks":  62,
+    "objects":  2,
+    "descriptorSets":  2,
+    "uniformBuffers":  2,
+    "drawsPerFrame":  2,
+    "validationErrors":  0,
+    "validationWarnings":  0,
+    "exitCode":  0,
+    "measuredSpeed1":  1,
+    "measuredSpeed2":  2,
+    "screenshots":  [
+                        "perspective.png",
+                        "orthographic.png",
+                        "tinted.png",
+                        "scaled.png",
+                        "object2-tinted.png"
+                    ]
+}

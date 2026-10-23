@@ -1,0 +1,67 @@
+Start testing: Oct 22 21:20 RTZ 2 (çèìà)
+----------------------------------------------------------
+1/4 Testing: dodecahedron-geometry
+1/4 Test: dodecahedron-geometry
+Command: "V:/build-debug-v/dodecahedron-tests.exe"
+Directory: V:/build-debug-v
+"dodecahedron-geometry" start time: Oct 22 21:20 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: 20 unique vertices, 12 regular pentagons, 30 shared edges, 36 outward triangles; closed convex surface; 20 distinct procedural RGB colors
+<end of output>
+Test time =   0.17 sec
+----------------------------------------------------------
+Test Passed.
+"dodecahedron-geometry" end time: Oct 22 21:20 RTZ 2 (çèìà)
+"dodecahedron-geometry" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/4 Testing: application-controls
+2/4 Test: application-controls
+Command: "V:/build-debug-v/application-state-tests.exe"
+Directory: V:/build-debug-v
+"application-controls" start time: Oct 22 21:20 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: projection/depth/aspect; position; XYZ rotation/scale; reset; animation timing/pause/resume/speed/radius/FPS; std140 layout; independent per-object uniforms
+<end of output>
+Test time =   0.17 sec
+----------------------------------------------------------
+Test Passed.
+"application-controls" end time: Oct 22 21:20 RTZ 2 (çèìà)
+"application-controls" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/4 Testing: camera-lighting-gizmos
+3/4 Test: camera-lighting-gizmos
+Command: "V:/build-debug-v/lighting-tests.exe"
+Directory: V:/build-debug-v
+"camera-lighting-gizmos" start time: Oct 22 21:20 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: flat normals; camera/view/clip/reset; inverse transpose; independent materials; spot constraints/soft edges; inverse square; 0/128 dynamic lights; 3D gizmos; GPU ABI assertions
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"camera-lighting-gizmos" end time: Oct 22 21:20 RTZ 2 (çèìà)
+"camera-lighting-gizmos" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/4 Testing: shader-memory-layout
+4/4 Test: shader-memory-layout
+Command: "C:/Users/mkoti/AppData/Local/Programs/Python/Python312/python.exe" "V://tests/verify_shader_layout.py" "--spirv-dis" "C:/Users/mkoti/AppData/Local/VulkanSDK/1.4.363.0/Bin/spirv-dis.exe" "--shader-dir" "V://shaders"
+Directory: V:/build-debug-v
+"shader-memory-layout" start time: Oct 22 21:20 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: SPIR-V Scene/Object offsets; Point/Spot runtime-array strides; sets 0/1 and bindings
+<end of output>
+Test time =   0.28 sec
+----------------------------------------------------------
+Test Passed.
+"shader-memory-layout" end time: Oct 22 21:20 RTZ 2 (çèìà)
+"shader-memory-layout" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 22 21:20 RTZ 2 (çèìà)

@@ -1,0 +1,31 @@
+{
+  "two_visible_separated_objects": true,
+  "visible_object_column_ranges": [
+    [
+      212,
+      389
+    ],
+    [
+      491,
+      632
+    ]
+  ],
+  "rendered_scale_area_ratio_object1": 0.3685661327883656,
+  "rendered_scale_changes_object1_size": true,
+  "object1_scale_leaves_object2_pixels_unchanged": true,
+  "object1_tint_changes_its_pixels": true,
+  "object1_tint_leaves_object2_pixels_unchanged": true,
+  "object2_tint_changes_its_pixels": true,
+  "object2_tint_leaves_object1_pixels_unchanged": true,
+  "different_object_mean_rgb": true,
+  "distinct_surface_rgb_values_per_object": [
+    332,
+    1199
+  ],
+  "lighting_varies_across_visible_surfaces": true,
+  "two_complete_objects_in_orthographic.png": true,
+  "two_complete_objects_in_resized-perspective.png": true,
+  "two_complete_objects_in_resized-orthographic.png": true,
+  "directional_light_changes_rendered_scene": true,
+  "changed_scene_pixels": 39077
+}

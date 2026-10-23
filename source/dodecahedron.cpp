@@ -1,6 +1,7 @@
 #include "dodecahedron.hpp"
 
 #include <cmath>
+#include <glm/geometric.hpp>
 
 namespace geometry {
 
@@ -36,6 +37,28 @@ Dodecahedron makeDodecahedron() {
 			mesh.indices[index++] = face[0];
 			mesh.indices[index++] = face[i];
 			mesh.indices[index++] = face[i + 1];
+		}
+	}
+	return mesh;
+}
+
+FlatDodecahedron makeFlatDodecahedron() {
+	const auto topology = makeDodecahedron();
+	FlatDodecahedron mesh{};
+	size_t index = 0;
+	for (size_t f = 0; f < topology.faces.size(); ++f) {
+		const auto& face = topology.faces[f];
+		const auto a = topology.vertices[face[0]].position;
+		const auto normal = glm::normalize(glm::cross(topology.vertices[face[1]].position - a,
+		                                              topology.vertices[face[2]].position - a));
+		for (size_t v = 0; v < face.size(); ++v) {
+			mesh.vertices[f * 5 + v] = topology.vertices[face[v]];
+			mesh.vertices[f * 5 + v].normal = normal;
+		}
+		for (uint32_t t = 1; t < 4; ++t) {
+			mesh.indices[index++] = static_cast<uint32_t>(f * 5);
+			mesh.indices[index++] = static_cast<uint32_t>(f * 5) + t;
+			mesh.indices[index++] = static_cast<uint32_t>(f * 5) + t + 1;
 		}
 	}
 	return mesh;

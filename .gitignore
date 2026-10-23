@@ -2,3 +2,6 @@ build-*/
 shaders/*.spv
 imgui.ini
 /.tools/
+docs/testing/**/live-ui.json
+docs/testing/**/snapshots.json
+docs/testing/**/*.tmp

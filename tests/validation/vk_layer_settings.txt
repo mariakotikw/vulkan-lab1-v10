@@ -1,0 +1,2 @@
+khronos_validation.validate_sync = true
+khronos_validation.report_flags = error,warn,perf
