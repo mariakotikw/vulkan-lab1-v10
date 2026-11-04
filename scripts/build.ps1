@@ -14,6 +14,10 @@ if (-not $env:VULKAN_SDK) {
 if (-not $env:VULKAN_SDK) { throw 'Install Vulkan SDK and set VULKAN_SDK.' }
 $env:Path = "$env:VULKAN_SDK\Bin;C:\msys64\ucrt64\bin;$env:Path"
 $make = Get-Command mingw32-make -ErrorAction SilentlyContinue
+if (-not $make) {
+    $cachedMake = Join-Path $env:LOCALAPPDATA 'VulkanLab1Workspace\.tools\mingw-make\ucrt64\bin\mingw32-make.exe'
+    if (Test-Path -LiteralPath $cachedMake) { $make = Get-Command $cachedMake }
+}
 if (-not $make) { throw 'Add mingw32-make.exe to PATH (MSYS2 UCRT64 make package).' }
 $drive = "${DriveLetter}:"
 if (Test-Path "$drive\") { throw "$drive is in use. Choose a free -DriveLetter." }

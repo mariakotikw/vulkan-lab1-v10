@@ -5,7 +5,7 @@ $sdk = Get-ChildItem 'C:\VulkanSDK', "$env:LOCALAPPDATA\VulkanSDK" -Directory -E
 if (-not $env:VULKAN_SDK -and $sdk) { $env:VULKAN_SDK = $sdk.FullName }
 $env:Path = "C:\msys64\ucrt64\bin;$env:VULKAN_SDK\Bin;$env:Path"
 $env:VK_LAYER_PATH = "$env:VULKAN_SDK\Bin"
-$testLogs = Join-Path $workspaceRoot 'docs\testing\lighting-ui'
+$testLogs = Join-Path $workspaceRoot 'docs\lab3\testing\lighting-ui'
 New-Item -ItemType Directory -Path $testLogs -Force | Out-Null
 Remove-Item -LiteralPath (Join-Path $testLogs 'result.json') -ErrorAction SilentlyContinue
 $env:LAB1_UI_OBSERVATION_FILE = Join-Path $testLogs 'live-ui.json'
@@ -182,6 +182,8 @@ try {
     Click-Control 'camera_header'
     Click-Control 'scene_header'
     Click-Control 'material_header'
+    Click-Control 'textures_header'
+    Click-Control 'effect_header'
     Click-Control 'point_header'
     Click-Control 'add_point'
     $added = Wait-State {param($s) $s.pointCount -eq 3 -and $s.uploadedPointCount -eq 3} 'add point'
@@ -226,8 +228,9 @@ try {
     Click-Control 'spot_header'
     Click-Control 'visualization_header'
     Click-Control 'gizmos'
-    $hidden = Wait-State {param($s) -not $s.showGizmos} 'gizmo toggle'
-    Check (-not $hidden.showGizmos) 'Show Light Gizmos toggle'
+    $expectedGizmos = -not $initial.showGizmos
+    $hidden = Wait-State {param($s) $s.showGizmos -eq $expectedGizmos} 'gizmo toggle'
+    Check ($hidden.showGizmos -eq $expectedGizmos) 'Show Light Gizmos toggle'
     Click-Control 'visualization_header'
     Click-Control 'ambient_header'
     Set-Number 'ambient_intensity' '0'

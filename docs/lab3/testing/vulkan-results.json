@@ -1,0 +1,18 @@
+﻿[
+    {
+        "scenario":  "normal",
+        "exitCode":  0,
+        "validationErrors":  0,
+        "validationWarnings":  0,
+        "validationDllLoaded":  true,
+        "syncValidationRequested":  true
+    },
+    {
+        "scenario":  "smoke",
+        "exitCode":  0,
+        "validationErrors":  0,
+        "validationWarnings":  0,
+        "validationDllLoaded":  true,
+        "syncValidationRequested":  true
+    }
+]

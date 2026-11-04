@@ -5,7 +5,7 @@ $sdk = Get-ChildItem 'C:\VulkanSDK', "$env:LOCALAPPDATA\VulkanSDK" -Directory -E
 if (-not $env:VULKAN_SDK -and $sdk) { $env:VULKAN_SDK = $sdk.FullName }
 $env:Path = "C:\msys64\ucrt64\bin;$env:VULKAN_SDK\Bin;$env:Path"
 $env:VK_LAYER_PATH = "$env:VULKAN_SDK\Bin"
-$testLogs = Join-Path $workspaceRoot 'docs\testing\ui'
+$testLogs = Join-Path $workspaceRoot 'docs\lab3\testing\legacy-ui'
 New-Item -ItemType Directory -Path $testLogs -Force | Out-Null
 Remove-Item -LiteralPath (Join-Path $testLogs 'result.json') -ErrorAction SilentlyContinue
 $env:LAB1_UI_OBSERVATION_FILE = Join-Path $testLogs 'live-ui.json'
@@ -170,9 +170,10 @@ try {
     Check ($baseline.projection -eq 'Perspective' -and -not $baseline.playing) 'Default perspective and paused animation'
     Check ($baseline.objects.Count -ge 2 -and $baseline.draws.Count -eq $baseline.objects.Count) 'Draw loop executes for both objects'
     Check (@($baseline.draws.descriptorSet | Select-Object -Unique).Count -ge 2) 'Two distinct VkDescriptorSet handles are bound'
-    Check (@($baseline.draws.uniformBuffer | Select-Object -Unique).Count -ge 2) 'Objects use distinct uniform buffers'
+    Check (@($baseline.draws.uniformBuffer | Select-Object -Unique).Count -eq 1) 'Both draws use one Dynamic Object UBO'
+    Check ($baseline.draws[0].dynamicOffset -eq 0 -and $baseline.draws[1].dynamicOffset -eq $baseline.draws[1].uniformStride) 'Each object binds its own aligned dynamic offset'
     foreach ($draw in $baseline.draws) {
-        Check ($draw.descriptorUniformBuffer -eq $draw.uniformBuffer -and $draw.indexCount -eq 108) 'Bound descriptor references its own UBO and draws the shared full mesh'
+        Check ($draw.descriptorUniformBuffer -eq $draw.uniformBuffer -and $draw.indexCount -eq 108) 'Material descriptor references the shared Dynamic UBO and full mesh'
     }
     foreach ($resource in @('pipeline', 'vertexBuffer', 'indexBuffer')) {
         Check (@($baseline.draws.$resource | Select-Object -Unique).Count -eq 1) "Both draws share one $resource"

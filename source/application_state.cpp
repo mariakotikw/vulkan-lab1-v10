@@ -38,6 +38,7 @@ void ObjectState::sanitize() {
 	animation.radius = std::clamp(animation.radius, 0.0f, 2.0f);
 	animation.vertical_amplitude = std::clamp(animation.vertical_amplitude, 0.0f, 1.5f);
 	material.sanitize();
+	textures.sanitize();
 }
 
 glm::mat4 ObjectState::modelMatrix() const {
@@ -84,20 +85,29 @@ glm::mat4 ProjectionState::projectionMatrix(float aspect) const {
 
 SceneState::SceneState() {
 	objects[0].transform.position = { -1.5f, 0.0f, 0.0f };
-	objects[0].transform.scale = glm::vec3(0.6f);
-	objects[0].material.albedo = { 0.85f, 0.24f, 0.09f };
+	objects[0].transform.scale = glm::vec3(0.68f);
+	objects[0].material.albedo = { 0.94f, 0.96f, 1.0f };
+	objects[0].material.specular = glm::vec3(0.45f);
+	objects[0].textures.emissive_strength = 1.6f;
 	objects[1].transform.position = { 1.5f, 0.0f, 0.0f };
 	objects[1].transform.rotation_degrees = { 15.0f, 35.0f, 5.0f };
-	objects[1].transform.scale = glm::vec3(0.5f);
-	objects[1].material.albedo = { 0.08f, 0.38f, 0.85f };
+	objects[1].transform.scale = glm::vec3(0.64f);
+	objects[1].material.albedo = { 1.0f, 0.96f, 0.99f };
+	objects[1].material.specular = glm::vec3(0.9f);
+	objects[1].material.shininess = 90;
+	objects[1].textures.material_preset = 2;
+	objects[1].textures.effect.enabled = true;
+	objects[1].textures.emissive_strength = 0.55f;
+	ambient_intensity = 0.24f;
+	directional.intensity = 0.9f;
 	for (auto& object : objects) object.initial_transform = object.transform;
-	point_lights.push_back({ { -2.8f, 1.5f, 1.8f }, { 1.0f, 0.35f, 0.12f }, 5.0f });
-	point_lights.push_back({ { 2.8f, 1.0f, 1.5f }, { 0.15f, 0.45f, 1.0f }, 5.0f });
+	point_lights.push_back({ { -2.8f, 1.5f, 1.8f }, { 0.4f, 0.6f, 1.0f }, 2.0f });
+	point_lights.push_back({ { 2.8f, 1.0f, 1.5f }, { 1.0f, 0.4f, 0.7f }, 2.0f });
 	SpotLight spot;
 	spot.position = { 0, 3, 2 };
 	spot.direction = safeDirection(glm::vec3(1.5f, 0, 0) - spot.position);
 	spot.color = { 0.8f, 1.0f, 0.85f };
-	spot.intensity = 18;
+	spot.intensity = 5;
 	spot_lights.push_back(spot);
 }
 

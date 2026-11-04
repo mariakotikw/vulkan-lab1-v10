@@ -100,6 +100,7 @@ int main() {
 		const auto counts = scene.sceneUniform(1).light_counts;
 		require(counts.x==128 && counts.y==128, "Light count upload");
 		scene.point_lights.resize(1); scene.spot_lights.resize(1);
+		scene.show_light_gizmos = true;
 		scene.spot_lights[0] = spot;
 		const auto gizmos = makeLightGizmos(scene);
 		require(gizmos.triangles.size()==72 && gizmos.lines.size()>100 && gizmos.lines.size()%2==0, "Cube or cone geometry");

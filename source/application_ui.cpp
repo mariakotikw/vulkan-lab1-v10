@@ -36,7 +36,8 @@ void drawControls(SceneState& scene) {
 	ImGui::SetNextWindowPos(ImVec2(std::max(0.0f, display.x - 376.0f), 8));
 	ImGui::SetNextWindowSize(ImVec2(std::min(368.0f, display.x), std::max(50.0f, display.y - 16)));
 	const auto flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
-	if (ImGui::Begin("Lab 2 - Camera and Lighting", nullptr, flags)) {
+	if (ImGui::Begin("Lab 3 - Texture Studio", nullptr, flags)) {
+		ImGui::TextColored(ImVec4(0.45f, 0.85f, 1.0f, 1), "COSMIC CORE / HOLOGRAPHIC PRISM");
 		ImGui::TextUnformatted("Variant 10 / regular dodecahedron");
 		if (section("Camera", "camera_header", ImGuiTreeNodeFlags_DefaultOpen)) {
 			auto& camera = scene.camera;
@@ -104,6 +105,37 @@ void drawControls(SceneState& scene) {
 			OBSERVE_VALUE("specular");
 			ImGui::SliderFloat("Shininess", &material.shininess, 1, 256, "%.0f", ImGuiSliderFlags_AlwaysClamp);
 			OBSERVE_VALUE("shininess");
+		}
+		if (section("Textures / Materials", "textures_header", ImGuiTreeNodeFlags_DefaultOpen)) {
+			auto& settings = scene.objects[scene.selected_object].textures;
+			const auto& presets = materialPresets();
+			ImGui::Text("Object %d / %s", scene.selected_object + 1, presets[settings.material_preset].name);
+			const bool open = ImGui::BeginCombo("Preset", presets[settings.material_preset].name);
+			OBSERVE_VALUE("texture_preset");
+			if (open) {
+				for (size_t i = 0; i < presets.size(); ++i) {
+					if (ImGui::Selectable(presets[i].name, settings.material_preset == static_cast<int>(i)))
+						settings.material_preset = static_cast<int>(i);
+					OBSERVE(("preset_" + std::to_string(i)).c_str());
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::Checkbox("Albedo Map", &settings.albedo_enabled); OBSERVE("albedo_map");
+			ImGui::SameLine();
+			ImGui::Checkbox("Specular Map", &settings.specular_enabled); OBSERVE("specular_map");
+			ImGui::Checkbox("Emissive Map", &settings.emissive_enabled); OBSERVE("emissive_map");
+			ImGui::SliderFloat("Emission", &settings.emissive_strength, 0, 4, "%.2f"); OBSERVE_VALUE("emission_strength");
+			if (!presets[settings.material_preset].specular_path)
+				ImGui::TextDisabled("Albedo-only preset / optional maps are black.");
+		}
+		if (section("Holographic Effect", "effect_header", ImGuiTreeNodeFlags_DefaultOpen)) {
+			auto& effect = scene.objects[scene.selected_object].textures.effect;
+			ImGui::Checkbox("Holographic Interference", &effect.enabled); OBSERVE("effect_enabled");
+			ImGui::SliderFloat("Animation Speed", &effect.speed, 0, 2, "%.2f"); OBSERVE_VALUE("effect_speed");
+			ImGui::SliderFloat("UV Distortion", &effect.distortion, 0, 0.08f, "%.3f"); OBSERVE_VALUE("effect_distortion");
+			ImGui::SliderFloat("Blend Factor", &effect.blend, 0, 1, "%.2f"); OBSERVE_VALUE("effect_blend");
+			ImGui::SliderFloat("Color Modulation", &effect.color_modulation, 0, 1, "%.2f"); OBSERVE_VALUE("effect_color");
+			ImGui::TextDisabled("Texture motion is independent of object Play/Pause.");
 		}
 		if (section("Ambient Light", "ambient_header")) {
 			ImGui::ColorEdit3("Ambient RGB", glm::value_ptr(scene.ambient_color));

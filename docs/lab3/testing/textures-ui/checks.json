@@ -1,0 +1,74 @@
+﻿[
+    {
+        "check":  "Default Cosmic Core and Holographic Prism materials",
+        "passed":  true
+    },
+    {
+        "check":  "Both models share one Dynamic Object UBO",
+        "passed":  true
+    },
+    {
+        "check":  "Independent aligned dynamic offsets and bounded ObjectUniform ranges",
+        "passed":  true
+    },
+    {
+        "check":  "Per-object push constant enable flags",
+        "passed":  true
+    },
+    {
+        "check":  "Texture clock advances while geometric animation is paused",
+        "passed":  true
+    },
+    {
+        "check":  "All effect sliders reach fragment Push Constants",
+        "passed":  true
+    },
+    {
+        "check":  "Preset 0 is independent and preserves transform/camera",
+        "passed":  true
+    },
+    {
+        "check":  "Preset 1 is independent and preserves transform/camera",
+        "passed":  true
+    },
+    {
+        "check":  "Preset 3 is independent and preserves transform/camera",
+        "passed":  true
+    },
+    {
+        "check":  "Preset 2 is independent and preserves transform/camera",
+        "passed":  true
+    },
+    {
+        "check":  "Same material set supports two independent dynamic offsets",
+        "passed":  true
+    },
+    {
+        "check":  "Transform independence with one buffer and one material set",
+        "passed":  true
+    },
+    {
+        "check":  "Albedo-only preset safely binds black optional maps",
+        "passed":  true
+    },
+    {
+        "check":  "Emissive control is independent per object",
+        "passed":  true
+    },
+    {
+        "check":  "Albedo, Specular and Emissive map switches exercised through ImGui",
+        "passed":  true
+    },
+    {
+        "check":  "Material switching and Dynamic UBO draws have zero Vulkan validation errors/warnings",
+        "passed":  true
+    },
+    {
+        "check":  "Runtime staging loads and device-local geometry are confirmed in logs",
+        "passed":  true
+    },
+    {
+        "check":  "Clean shutdown after texture tests",
+        "passed":  true
+    }
+]

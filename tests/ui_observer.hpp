@@ -7,6 +7,9 @@ struct Draw {
 	uintptr_t descriptor_set, uniform_buffer, pipeline, vertex_buffer, index_buffer;
 	uint32_t index_count;
 	application::ObjectUniform uploaded_uniform;
+	uint32_t dynamic_offset = 0;
+	uint32_t uniform_stride = 0;
+	application::TexturePushConstants texture_push{};
 };
 void beginFrame();
 void item(const char* name, float width = 0);

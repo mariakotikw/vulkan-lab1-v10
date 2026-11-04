@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 namespace geometry {
@@ -10,6 +11,7 @@ struct Vertex {
 	glm::vec3 position;
 	glm::vec3 color;
 	glm::vec3 normal{ 0.0f };
+	glm::vec2 uv{ 0.0f };
 };
 
 using Pentagon = std::array<uint32_t, 5>;

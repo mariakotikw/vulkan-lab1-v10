@@ -1,0 +1,255 @@
+{
+  "passed": true,
+  "image_directory": "D:\\5 сем лабы\\компьютерная графика\\lab2\\docs\\lab3\\testing\\textures-ui",
+  "background_rgb": [
+    31,
+    37,
+    48
+  ],
+  "difference_threshold": 2,
+  "checks": [
+    {
+      "name": "paused_geometry_hologram_moves",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 33726,
+        "total_pixels": 430344,
+        "max_channel_delta": 51,
+        "mean_channel_delta": 0.3496466392777251
+      },
+      "limits": "At least 200 right pixels differ by >2"
+    },
+    {
+      "name": "hologram_does_not_change_left_object",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 0,
+        "total_pixels": 430344,
+        "max_channel_delta": 0,
+        "mean_channel_delta": 0.0
+      },
+      "limits": "Fewer than 10 left pixels differ by >2"
+    },
+    {
+      "name": "disabled_effect_is_static",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 0,
+        "total_pixels": 860688,
+        "max_channel_delta": 0,
+        "mean_channel_delta": 0.0
+      },
+      "limits": "Fewer than 10 scene pixels differ by >2"
+    },
+    {
+      "name": "cosmic_emissive_survives_without_lights",
+      "passed": true,
+      "metrics": {
+        "visible_pixels": 2748,
+        "colorful_pixels": 2748,
+        "foreground_pixels": 44281,
+        "max_channel": 255
+      },
+      "limits": "More than 100 colorful non-background pixels"
+    },
+    {
+      "name": "missing_emissive_black_fallback_is_dark",
+      "passed": true,
+      "metrics": {
+        "visible_pixels": 0,
+        "colorful_pixels": 0,
+        "foreground_pixels": 39191,
+        "max_channel": 0
+      },
+      "limits": "Fewer than 10 non-background pixels with a channel >45"
+    },
+    {
+      "name": "hologram_emissive_survives_without_lights",
+      "passed": true,
+      "metrics": {
+        "visible_pixels": 116,
+        "colorful_pixels": 105,
+        "foreground_pixels": 39190,
+        "max_channel": 112
+      },
+      "limits": "More than 100 colorful non-background pixels"
+    },
+    {
+      "name": "disabled_hologram_emissive_is_dark",
+      "passed": true,
+      "metrics": {
+        "visible_pixels": 0,
+        "colorful_pixels": 0,
+        "foreground_pixels": 39191,
+        "max_channel": 0
+      },
+      "limits": "Fewer than 10 non-background pixels with a channel >45"
+    },
+    {
+      "name": "emissive_toggle_changes_rendered_pixels",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 1752,
+        "total_pixels": 430344,
+        "max_channel_delta": 112,
+        "mean_channel_delta": 0.06173355888932265
+      },
+      "limits": "At least 200 right pixels differ by >2"
+    },
+    {
+      "name": "left_independent_dark-fallback.png_to_dark-emissive.png",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 0,
+        "total_pixels": 430344,
+        "max_channel_delta": 0,
+        "mean_channel_delta": 0.0
+      },
+      "limits": "Fewer than 10 left pixels differ by >2"
+    },
+    {
+      "name": "left_independent_dark-emissive.png_to_dark-emissive-off.png",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 0,
+        "total_pixels": 430344,
+        "max_channel_delta": 0,
+        "mean_channel_delta": 0.0
+      },
+      "limits": "Fewer than 10 left pixels differ by >2"
+    },
+    {
+      "name": "specular_map_adds_highlights",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 11836,
+        "total_pixels": 430344,
+        "max_channel_delta": 130,
+        "mean_channel_delta": 1.7584475055614424,
+        "brighter_pixels": 11836,
+        "darker_pixels": 0,
+        "unchanged_lit_surface_pixels": 25947
+      },
+      "limits": "At least 200 right pixels gain >2 in a channel"
+    },
+    {
+      "name": "specular_preserves_unaffected_diffuse_pixels",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 11836,
+        "total_pixels": 430344,
+        "max_channel_delta": 130,
+        "mean_channel_delta": 1.7584475055614424,
+        "brighter_pixels": 11836,
+        "darker_pixels": 0,
+        "unchanged_lit_surface_pixels": 25947
+      },
+      "limits": "Fewer than 10 darker pixels; at least 200 unchanged lit surface pixels"
+    },
+    {
+      "name": "specular_toggle_does_not_change_left_object",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 0,
+        "total_pixels": 430344,
+        "max_channel_delta": 0,
+        "mean_channel_delta": 0.0
+      },
+      "limits": "Fewer than 10 left pixels differ by >2"
+    },
+    {
+      "name": "albedo_toggle_changes_right_surface",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 37783,
+        "total_pixels": 430344,
+        "max_channel_delta": 250,
+        "mean_channel_delta": 10.846987526258063
+      },
+      "limits": "At least 200 right pixels differ by >2"
+    },
+    {
+      "name": "albedo_toggle_does_not_change_left_object",
+      "passed": true,
+      "metrics": {
+        "changed_pixels": 0,
+        "total_pixels": 430344,
+        "max_channel_delta": 0,
+        "mean_channel_delta": 0.0
+      },
+      "limits": "Fewer than 10 left pixels differ by >2"
+    },
+    {
+      "name": "default_left_surface_is_not_washed_out",
+      "passed": true,
+      "metrics": {
+        "visible_surface_pixels": 29099,
+        "near_white_pixels": 0,
+        "near_white_fraction": 0.0
+      },
+      "limits": "At least 1000 visible surface pixels; less than 10% have every RGB channel >=240"
+    },
+    {
+      "name": "default_right_surface_is_not_washed_out",
+      "passed": true,
+      "metrics": {
+        "visible_surface_pixels": 39191,
+        "near_white_pixels": 0,
+        "near_white_fraction": 0.0
+      },
+      "limits": "At least 1000 visible surface pixels; less than 10% have every RGB channel >=240"
+    }
+  ],
+  "images": {
+    "default.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "hologram-a.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "hologram-b.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "static-a.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "static-b.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "dark-fallback.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "dark-emissive.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "dark-emissive-off.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "specular-on.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "specular-off.png": {
+      "width": 1440,
+      "height": 900
+    },
+    "albedo-off.png": {
+      "width": 1440,
+      "height": 900
+    }
+  },
+  "crop": {
+    "top": 50,
+    "bottom_margin": 16,
+    "left": 16,
+    "right_margin": 392
+  }
+}

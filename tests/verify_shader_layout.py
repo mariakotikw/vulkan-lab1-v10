@@ -38,3 +38,15 @@ for variable, descriptor_set, binding in [('scene', 0, 0), ('object', 1, 0), ('p
     for decoration, value in [('DescriptorSet', descriptor_set), ('Binding', binding)]:
         assert re.search(r'OpDecorate\s+' + re.escape(identifier) + rf'\s+{decoration}\s+{value}\b', assembly), variable
 print('PASS: SPIR-V Scene/Object offsets; Point/Spot runtime-array strides; sets 0/1 and bindings')
+
+for name, offsets in {'TexturePush': [0, 16, 32]}.items():
+    identifier = struct_id(name)
+    for member, offset in enumerate(offsets):
+        assert re.search(rf'OpMemberDecorate\s+{re.escape(identifier)}\s+{member}\s+Offset\s+{offset}\b', assembly), (name, member, offset)
+assert 'PushConstant' in assembly
+for variable, binding in [('albedoMap', 1), ('specularMap', 2), ('emissiveMap', 3)]:
+    identifier = struct_id(variable)
+    assert re.search(r'OpDecorate\s+' + re.escape(identifier) + r'\s+DescriptorSet\s+1\b', assembly), variable
+    assert re.search(r'OpDecorate\s+' + re.escape(identifier) + rf'\s+Binding\s+{binding}\b', assembly), variable
+assert assembly.count('OpImageSampleImplicitLod') >= 4, 'Expected multiple albedo samples plus specular/emissive maps'
+print('PASS: 48-byte push block, material sampler bindings, multiple compiled texture samples')

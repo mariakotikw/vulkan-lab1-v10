@@ -105,6 +105,16 @@ void endFrame() {
 	    << "\",\"fov\":" << camera.fov_degrees << ",\"orthoHeight\":" << camera.ortho_half_height;
 	out << ",\"cameraPosition\":"; vector(out, camera.position);
 	out << ",\"yaw\":" << camera.yaw_degrees << ",\"pitch\":" << camera.pitch_degrees;
+	out << ",\"texturePreset\":" << state.textures.material_preset
+	    << ",\"albedoEnabled\":" << (state.textures.albedo_enabled ? "true" : "false")
+	    << ",\"specularEnabled\":" << (state.textures.specular_enabled ? "true" : "false")
+	    << ",\"emissiveEnabled\":" << (state.textures.emissive_enabled ? "true" : "false")
+	    << ",\"emissiveStrength\":" << state.textures.emissive_strength
+	    << ",\"effectEnabled\":" << (state.textures.effect.enabled ? "true" : "false")
+	    << ",\"effectSpeed\":" << state.textures.effect.speed
+	    << ",\"effectDistortion\":" << state.textures.effect.distortion
+	    << ",\"effectBlend\":" << state.textures.effect.blend
+	    << ",\"effectColor\":" << state.textures.effect.color_modulation;
 	out << ",\"shininess\":" << state.material.shininess;
 	out << ",\"specular\":"; vector(out, state.material.specular);
 	out << ",\"pointCount\":" << data.scene.point_lights.size() << ",\"spotCount\":" << data.scene.spot_lights.size();
@@ -148,6 +158,8 @@ void endFrame() {
 		if (i != 0) out << ',';
 		out << "{\"mvp\":"; matrix(out, data.scene.camera.projectionMatrix((ImGui::GetIO().DisplaySize.x - 384.0f) / ImGui::GetIO().DisplaySize.y) * data.scene.camera.viewMatrix() * data.uniforms[i].model);
 		out << ",\"color\":"; vector(out, glm::vec3(data.uniforms[i].albedo));
+		out << ",\"texturePreset\":" << data.scene.objects[i].textures.material_preset;
+		out << ",\"effectEnabled\":" << (data.scene.objects[i].textures.effect.enabled ? "true" : "false");
 		out << ",\"position\":"; vector(out, data.scene.objects[i].transform.position);
 		out << '}';
 	}
@@ -162,8 +174,16 @@ void endFrame() {
 		    << "\",\"vertexBuffer\":\"" << draw.vertex_buffer
 		    << "\",\"indexBuffer\":\"" << draw.index_buffer
 		    << "\",\"indexCount\":" << std::dec << draw.index_count << ",\"uploadedMvp\":";
-		matrix(out, data.scene.camera.projectionMatrix((ImGui::GetIO().DisplaySize.x - 384.0f) / ImGui::GetIO().DisplaySize.y) * data.scene.camera.viewMatrix() * draw.uploaded_uniform.model);
+		matrix(out, data.uploaded_scene.view_projection * draw.uploaded_uniform.model);
 		out << ",\"uploadedColor\":"; vector(out, glm::vec3(draw.uploaded_uniform.albedo));
+		out << ",\"dynamicOffset\":" << draw.dynamic_offset << ",\"uniformStride\":" << draw.uniform_stride
+		    << ",\"pushTime\":" << draw.texture_push.animation.x
+		    << ",\"pushEffectEnabled\":" << draw.texture_push.controls.x
+		    << ",\"pushSpeed\":" << draw.texture_push.animation.y
+		    << ",\"pushDistortion\":" << draw.texture_push.animation.z
+		    << ",\"pushBlend\":" << draw.texture_push.animation.w
+		    << ",\"pushColor\":" << draw.texture_push.controls.y;
+
 		out << '}';
 	}
 	out << ']';

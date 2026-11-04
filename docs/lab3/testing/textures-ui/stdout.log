@@ -1,0 +1,17 @@
+Vulkan validation layers: enabled
+GPU: Intel(R) UHD Graphics
+Device-local buffer: bytes=2640, usage=128, memoryFlags=1, mapped=no
+Device-local buffer: bytes=432, usage=64, memoryFlags=1, mapped=no
+Texture: assets/textures/cosmic_core_albedo.png, 512x512, sRGB, memoryFlags=1
+Texture: assets/textures/cosmic_core_specular.png, 512x512, UNORM, memoryFlags=1
+Texture: assets/textures/cosmic_core_emissive.png, 512x512, sRGB, memoryFlags=1
+Texture: assets/textures/nebula_mist_albedo.png, 512x512, sRGB, memoryFlags=1
+Texture: assets/textures/nebula_mist_specular.png, 512x512, UNORM, memoryFlags=1
+Texture: assets/textures/nebula_mist_emissive.png, 512x512, sRGB, memoryFlags=1
+Texture: assets/textures/holographic_prism_albedo.png, 512x512, sRGB, memoryFlags=1
+Texture: assets/textures/holographic_prism_specular.png, 512x512, UNORM, memoryFlags=1
+Texture: assets/textures/holographic_prism_emissive.png, 512x512, sRGB, memoryFlags=1
+Texture: assets/textures/prism_grid_albedo.png, 512x512, sRGB, memoryFlags=1
+Dynamic UBO: objects=2, size=160, stride=192, alignment=64, total=384; push constants=48 bytes
+Lab 3: 60 flat vertices with UV, 108 indices; 4 texture materials; Scene set 0, Material/Dynamic Object set 1
+Validation result: errors=0, warnings=0

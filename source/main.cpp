@@ -16,10 +16,10 @@
 
 namespace {
 
-constexpr int32_t default_window_width = 1280;
-constexpr int32_t default_window_height = 720;
+constexpr int32_t default_window_width = 1440;
+constexpr int32_t default_window_height = 900;
 
-constexpr char default_window_title[] = "Vulkan Lab 2 - Camera and Lighting - Variant 10";
+constexpr char default_window_title[] = "Vulkan Lab 3 - Cosmic Core and Holographic Prism - Variant 10";
 
 GLFWwindow* glfw_window;
 

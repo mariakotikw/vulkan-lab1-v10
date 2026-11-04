@@ -1,0 +1,126 @@
+Start testing: Nov 04 10:51 RTZ 2 (çèìà)
+----------------------------------------------------------
+1/7 Testing: dodecahedron-geometry
+1/7 Test: dodecahedron-geometry
+Command: "V:/build-debug-v/dodecahedron-tests.exe"
+Directory: V:/build-debug-v
+"dodecahedron-geometry" start time: Nov 04 10:51 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: 20 unique vertices, 12 regular pentagons, 30 shared edges, 36 outward triangles; closed convex surface; 20 distinct procedural RGB colors
+<end of output>
+Test time =   0.20 sec
+----------------------------------------------------------
+Test Passed.
+"dodecahedron-geometry" end time: Nov 04 10:51 RTZ 2 (çèìà)
+"dodecahedron-geometry" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/7 Testing: application-controls
+2/7 Test: application-controls
+Command: "V:/build-debug-v/application-state-tests.exe"
+Directory: V:/build-debug-v
+"application-controls" start time: Nov 04 10:51 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: projection/depth/aspect; position; XYZ rotation/scale; reset; animation timing/pause/resume/speed/radius/FPS; std140 layout; independent per-object uniforms
+<end of output>
+Test time =   0.20 sec
+----------------------------------------------------------
+Test Passed.
+"application-controls" end time: Nov 04 10:51 RTZ 2 (çèìà)
+"application-controls" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/7 Testing: camera-lighting-gizmos
+3/7 Test: camera-lighting-gizmos
+Command: "V:/build-debug-v/lighting-tests.exe"
+Directory: V:/build-debug-v
+"camera-lighting-gizmos" start time: Nov 04 10:51 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: flat normals; camera/view/clip/reset; inverse transpose; independent materials; spot constraints/soft edges; inverse square; 0/128 dynamic lights; 3D gizmos; GPU ABI assertions
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"camera-lighting-gizmos" end time: Nov 04 10:51 RTZ 2 (çèìà)
+"camera-lighting-gizmos" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/7 Testing: uv-dynamic-ubo-push-constants
+4/7 Test: uv-dynamic-ubo-push-constants
+Command: "V:/build-debug-v/texture-material-tests.exe"
+Directory: V:/build-debug-v
+"uv-dynamic-ubo-push-constants" start time: Nov 04 10:51 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: 12 planar/isotropic/readable pentagon UVs; preserved topology and normals; dynamic UBO alignment/overflow; 48-byte push ABI; materials/toggles/independent texture clock/sanitization
+<end of output>
+Test time =   0.17 sec
+----------------------------------------------------------
+Test Passed.
+"uv-dynamic-ubo-push-constants" end time: Nov 04 10:51 RTZ 2 (çèìà)
+"uv-dynamic-ubo-push-constants" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/7 Testing: png-file-decoding
+5/7 Test: png-file-decoding
+Command: "V:/build-debug-v/image-loading-tests.exe" "V:/"
+Directory: V:/build-debug-v
+"png-file-decoding" start time: Nov 04 10:51 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: 10 real PNG files decoded to opaque RGBA; missing/corrupt files rejected
+<end of output>
+Test time =   0.59 sec
+----------------------------------------------------------
+Test Passed.
+"png-file-decoding" end time: Nov 04 10:51 RTZ 2 (çèìà)
+"png-file-decoding" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/7 Testing: texture-asset-quality
+6/7 Test: texture-asset-quality
+Command: "C:/Users/mkoti/AppData/Local/Programs/Python/Python312/python.exe" "V://tests/verify_texture_assets.py"
+Directory: V:/build-debug-v
+"texture-asset-quality" start time: Nov 04 10:51 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS cosmic_core_albedo.png: RGB8 512x512, mean=17.20, near-black=0.0%, p95-p05=31
+PASS cosmic_core_emissive.png: RGB8 512x512, mean=3.30, near-black=78.7%, p95-p05=16
+PASS cosmic_core_specular.png: RGB8 512x512, mean=21.55, near-black=0.0%, p95-p05=21
+PASS holographic_prism_albedo.png: RGB8 512x512, mean=93.44, near-black=0.0%, p95-p05=35
+PASS holographic_prism_emissive.png: RGB8 512x512, mean=0.36, near-black=97.7%, p95-p05=0
+PASS holographic_prism_specular.png: RGB8 512x512, mean=107.68, near-black=0.0%, p95-p05=121
+PASS nebula_mist_albedo.png: RGB8 512x512, mean=42.15, near-black=0.0%, p95-p05=66
+PASS nebula_mist_emissive.png: RGB8 512x512, mean=1.92, near-black=81.8%, p95-p05=10
+PASS nebula_mist_specular.png: RGB8 512x512, mean=21.93, near-black=0.0%, p95-p05=25
+PASS prism_grid_albedo.png: RGB8 512x512, mean=68.15, near-black=0.0%, p95-p05=55
+PASS 4 distinct presets / 10 original PNGs; contrast, locality and fallback asset layout
+<end of output>
+Test time =  12.96 sec
+----------------------------------------------------------
+Test Passed.
+"texture-asset-quality" end time: Nov 04 10:52 RTZ 2 (çèìà)
+"texture-asset-quality" time elapsed: 00:00:12
+----------------------------------------------------------
+
+7/7 Testing: shader-memory-layout
+7/7 Test: shader-memory-layout
+Command: "C:/Users/mkoti/AppData/Local/Programs/Python/Python312/python.exe" "V://tests/verify_shader_layout.py" "--spirv-dis" "C:/Users/mkoti/AppData/Local/VulkanSDK/1.4.363.0/Bin/spirv-dis.exe" "--shader-dir" "V://shaders"
+Directory: V:/build-debug-v
+"shader-memory-layout" start time: Nov 04 10:52 RTZ 2 (çèìà)
+Output:
+----------------------------------------------------------
+PASS: SPIR-V Scene/Object offsets; Point/Spot runtime-array strides; sets 0/1 and bindings
+PASS: 48-byte push block, material sampler bindings, multiple compiled texture samples
+<end of output>
+Test time =   0.45 sec
+----------------------------------------------------------
+Test Passed.
+"shader-memory-layout" end time: Nov 04 10:52 RTZ 2 (çèìà)
+"shader-memory-layout" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Nov 04 10:52 RTZ 2 (çèìà)

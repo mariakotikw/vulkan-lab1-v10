@@ -4,6 +4,7 @@
 #include "graphics.hpp"
 #include "application_ui.hpp"
 #include "light_gizmos.hpp"
+#include "texture.hpp"
 
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -34,7 +35,16 @@ SceneState scene;
 
 graphics::Buffer vertex_buffer;
 graphics::Buffer index_buffer;
-std::array<graphics::Buffer, object_count> object_uniform_buffers;
+graphics::Buffer object_uniform_buffer;
+VkDeviceSize object_uniform_stride = 0;
+VkDeviceSize uniform_offset_alignment = 1;
+double texture_time = 0;
+struct MaterialResources {
+	graphics::Texture albedo, specular, emissive;
+	VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+};
+std::array<MaterialResources, material_preset_count> texture_materials;
+graphics::Texture black_texture;
 graphics::Buffer scene_uniform_buffer;
 graphics::Buffer point_light_buffer, spot_light_buffer;
 graphics::Buffer gizmo_triangle_buffer, gizmo_line_buffer;
@@ -45,7 +55,7 @@ VkPipeline gizmo_line_pipeline = VK_NULL_HANDLE;
 uint32_t gizmo_triangle_count = 0, gizmo_line_count = 0;
 VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
 VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-std::array<VkDescriptorSet, object_count> descriptor_sets{};
+
 VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 VkPipeline pipeline = VK_NULL_HANDLE;
 uint32_t index_count = 0;
@@ -139,21 +149,26 @@ void createDescriptors() {
 		.bindingCount = 3, .pBindings = scene_bindings
 	};
 	check(vkCreateDescriptorSetLayout(device, &scene_info, nullptr, &scene_set_layout), "scene layout");
-	const VkDescriptorSetLayoutBinding binding = {
-		0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr
+	const VkDescriptorSetLayoutBinding object_bindings[] = {
+		{ 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+		{ 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+		{ 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+		{ 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
 	};
 	const VkDescriptorSetLayoutCreateInfo object_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.bindingCount = 1, .pBindings = &binding
+		.bindingCount = 4, .pBindings = object_bindings
 	};
-	check(vkCreateDescriptorSetLayout(device, &object_info, nullptr, &descriptor_set_layout), "object layout");
+	check(vkCreateDescriptorSetLayout(device, &object_info, nullptr, &descriptor_set_layout), "material/object layout");
 	const VkDescriptorPoolSize pool_sizes[] = {
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, object_count + 1 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 }
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, material_preset_count },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, material_preset_count * 3 }
 	};
 	const VkDescriptorPoolCreateInfo pool_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.maxSets = object_count + 1, .poolSizeCount = 2, .pPoolSizes = pool_sizes
+		.maxSets = material_preset_count + 1, .poolSizeCount = 4, .pPoolSizes = pool_sizes
 	};
 	check(vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptor_pool), "descriptor pool");
 	const VkDescriptorSetAllocateInfo scene_allocate = {
@@ -161,23 +176,33 @@ void createDescriptors() {
 		.descriptorSetCount = 1, .pSetLayouts = &scene_set_layout
 	};
 	check(vkAllocateDescriptorSets(device, &scene_allocate, &scene_descriptor_set), "scene descriptor");
-	std::array<VkDescriptorSetLayout, object_count> layouts;
-	layouts.fill(descriptor_set_layout);
-	const VkDescriptorSetAllocateInfo allocate = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = descriptor_pool,
-		.descriptorSetCount = object_count, .pSetLayouts = layouts.data()
-	};
-	check(vkAllocateDescriptorSets(device, &allocate, descriptor_sets.data()), "object descriptors");
 	updateSceneDescriptors();
-	for (size_t i = 0; i < object_count; ++i) {
-		const VkDescriptorBufferInfo info = { object_uniform_buffers[i].handle, 0, sizeof(ObjectUniform) };
-		const VkWriteDescriptorSet write = {
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = descriptor_sets[i], .dstBinding = 0,
-			.descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .pBufferInfo = &info
+	for (auto& material : texture_materials) {
+		const VkDescriptorSetAllocateInfo allocate = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = descriptor_pool,
+			.descriptorSetCount = 1, .pSetLayouts = &descriptor_set_layout
 		};
-		vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+		check(vkAllocateDescriptorSets(device, &allocate, &material.descriptor_set), "material descriptor");
+		const VkDescriptorBufferInfo buffer_info = { object_uniform_buffer.handle, 0, sizeof(ObjectUniform) };
+		const auto& specular = material.specular.view ? material.specular : black_texture;
+		const auto& emissive = material.emissive.view ? material.emissive : black_texture;
+		const VkDescriptorImageInfo images[] = {
+			{ material.albedo.sampler, material.albedo.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+			{ specular.sampler, specular.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+			{ emissive.sampler, emissive.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }
+		};
+		VkWriteDescriptorSet writes[4] = {
+			{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = material.descriptor_set, .dstBinding = 0,
+			  .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, .pBufferInfo = &buffer_info }
+		};
+		for (uint32_t binding = 1; binding < 4; ++binding) {
+			writes[binding] = { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = material.descriptor_set,
+				.dstBinding = binding, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.pImageInfo = &images[binding - 1] };
+		}
+		vkUpdateDescriptorSets(device, 4, writes, 0, nullptr);
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
-		ui_observer::descriptorWrite(reinterpret_cast<uintptr_t>(write.dstSet), reinterpret_cast<uintptr_t>(info.buffer));
+		ui_observer::descriptorWrite(reinterpret_cast<uintptr_t>(material.descriptor_set), reinterpret_cast<uintptr_t>(buffer_info.buffer));
 #endif
 	}
 }
@@ -185,10 +210,12 @@ void createDescriptors() {
 void createPipeline(bool gizmo = false, bool lines = false) {
 	const auto& context = graphics::internal::context;
 	const VkDescriptorSetLayout layouts[] = { scene_set_layout, descriptor_set_layout };
+	const VkPushConstantRange push_range = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(TexturePushConstants) };
 	const VkPipelineLayoutCreateInfo layout_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 2,
 		.pSetLayouts = layouts,
+		.pushConstantRangeCount = 1, .pPushConstantRanges = &push_range,
 	};
 	if (!gizmo) check(vkCreatePipelineLayout(context.device, &layout_info, nullptr, &pipeline_layout),
 	      "vkCreatePipelineLayout");
@@ -208,11 +235,12 @@ void createPipeline(bool gizmo = false, bool lines = false) {
 		  .offset = offsetof(geometry::Vertex, position) },
 		{ .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT,
 		  .offset = static_cast<uint32_t>(gizmo ? offsetof(GizmoVertex, color) : offsetof(geometry::Vertex, normal)) },
+		{ .location = 2, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(geometry::Vertex, uv) },
 	};
 	const VkPipelineVertexInputStateCreateInfo vertex_input = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 		.vertexBindingDescriptionCount = 1, .pVertexBindingDescriptions = &binding,
-		.vertexAttributeDescriptionCount = 2, .pVertexAttributeDescriptions = attributes,
+		.vertexAttributeDescriptionCount = gizmo ? 2u : 3u, .pVertexAttributeDescriptions = attributes,
 	};
 	const VkPipelineInputAssemblyStateCreateInfo assembly = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -277,14 +305,28 @@ void createPipeline(bool gizmo = false, bool lines = false) {
 bool initialize() {
 	try {
 		const auto mesh = geometry::makeFlatDodecahedron();
-		vertex_buffer = graphics::createMappedBuffer(sizeof(mesh.vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-		graphics::writeBuffer(vertex_buffer, mesh.vertices.data(), sizeof(mesh.vertices));
-		index_buffer = graphics::createMappedBuffer(sizeof(mesh.indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-		graphics::writeBuffer(index_buffer, mesh.indices.data(), sizeof(mesh.indices));
+		vertex_buffer = graphics::createDeviceLocalBuffer(mesh.vertices.data(), sizeof(mesh.vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+		index_buffer = graphics::createDeviceLocalBuffer(mesh.indices.data(), sizeof(mesh.indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 		index_count = static_cast<uint32_t>(mesh.indices.size());
-		for (auto& buffer : object_uniform_buffers) {
-			buffer = graphics::createMappedBuffer(sizeof(ObjectUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(graphics::internal::context.physical_device, &properties);
+		uniform_offset_alignment = properties.limits.minUniformBufferOffsetAlignment;
+		object_uniform_stride = dynamicUniformStride(sizeof(ObjectUniform), static_cast<size_t>(uniform_offset_alignment));
+		if (sizeof(ObjectUniform) > properties.limits.maxUniformBufferRange || sizeof(TexturePushConstants) > properties.limits.maxPushConstantsSize)
+			throw std::runtime_error("Device uniform or push constant limit is too small");
+		(void)dynamicUniformOffset(object_count - 1, static_cast<size_t>(object_uniform_stride));
+		object_uniform_buffer = graphics::createMappedBuffer(object_uniform_stride * object_count, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+		black_texture = graphics::createBlackTexture();
+		const auto& presets = materialPresets();
+		for (size_t i = 0; i < texture_materials.size(); ++i) {
+			auto& material = texture_materials[i];
+			material.albedo = graphics::loadTexture(presets[i].albedo_path, true);
+			if (presets[i].specular_path) material.specular = graphics::loadTexture(presets[i].specular_path, false);
+			if (presets[i].emissive_path) material.emissive = graphics::loadTexture(presets[i].emissive_path, true);
 		}
+		std::cout << "Dynamic UBO: objects=" << object_count << ", size=" << sizeof(ObjectUniform)
+		          << ", stride=" << object_uniform_stride << ", alignment=" << uniform_offset_alignment
+		          << ", total=" << object_uniform_buffer.size << "; push constants=" << sizeof(TexturePushConstants) << " bytes\n";
 		scene_uniform_buffer = graphics::createMappedBuffer(sizeof(SceneUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 		point_light_buffer = graphics::createMappedBuffer(sizeof(GpuPointLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 		spot_light_buffer = graphics::createMappedBuffer(sizeof(GpuSpotLight), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
@@ -292,8 +334,7 @@ bool initialize() {
 		createPipeline();
 		createPipeline(true, false);
 		createPipeline(true, true);
-		std::cout << "Lab 2: 20 geometric / 60 flat vertices, 12 pentagons, 36 triangles; "
-		          << "Scene set 0 (UBO + point/spot SSBO), Object set 1 (2 UBOs)\n";
+		std::cout << "Lab 3: 60 flat vertices with UV, 108 indices; 4 texture materials; Scene set 0, Material/Dynamic Object set 1\n";
 		return true;
 	} catch (const std::exception& error) {
 		std::cerr << "Application initialization: " << error.what() << '\n';
@@ -318,8 +359,14 @@ void shutdown() {
 	pipeline_layout = VK_NULL_HANDLE;
 	descriptor_pool = VK_NULL_HANDLE;
 	descriptor_set_layout = VK_NULL_HANDLE;
-	descriptor_sets.fill(VK_NULL_HANDLE);
-	for (auto& buffer : object_uniform_buffers) graphics::destroyBuffer(buffer);
+	for (auto& material : texture_materials) {
+		graphics::destroyTexture(material.emissive);
+		graphics::destroyTexture(material.specular);
+		graphics::destroyTexture(material.albedo);
+		material.descriptor_set = VK_NULL_HANDLE;
+	}
+	graphics::destroyTexture(black_texture);
+	graphics::destroyBuffer(object_uniform_buffer);
 	graphics::destroyBuffer(scene_uniform_buffer);
 	graphics::destroyBuffer(point_light_buffer);
 	graphics::destroyBuffer(spot_light_buffer);
@@ -333,6 +380,24 @@ void smokeStep(uint32_t frame) {
 	if (frame % 60 != 0) return;
 	const uint32_t phase = frame / 60;
 	std::cout << "SMOKE phase " << phase << '\n';
+	if (phase == 2) {
+		scene.objects[0].textures.material_preset = 1;
+		scene.objects[1].textures.material_preset = 3;
+	} else if (phase == 3) {
+		for (auto& object : scene.objects) object.textures.emissive_enabled = false;
+	} else if (phase == 4) {
+		scene.objects[0].textures.material_preset = 3;
+		scene.objects[1].textures.material_preset = 0;
+	} else if (phase == 5) {
+		scene.objects[0].textures.material_preset = 1;
+		scene.objects[1].textures.material_preset = 2;
+		scene.objects[1].textures.effect.enabled = false;
+	} else if (phase == 6) {
+		scene.objects[1].textures.effect.enabled = true;
+		scene.objects[1].textures.effect.speed = 0.8f;
+		scene.objects[1].textures.effect.distortion = 0.035f;
+		scene.objects[1].textures.emissive_enabled = true;
+	}
 	if (phase == 1 || phase == 3) {
 		scene.point_lights.clear(); scene.spot_lights.clear();
 	} else if (phase == 2) {
@@ -366,6 +431,7 @@ void smokeStep(uint32_t frame) {
 }
 
 void update(double time) {
+	texture_time = time;
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
 	ui_observer::beginFrame();
 #endif
@@ -408,8 +474,8 @@ void update(double time) {
 		graphics::writeBuffer(gizmo_line_buffer, gizmos.lines.data(), bytes);
 	}
 	const auto uniforms = scene.objectUniforms();
-	for (size_t i = 0; i < object_uniform_buffers.size(); ++i) {
-		graphics::writeBuffer(object_uniform_buffers[i], &uniforms[i], sizeof(ObjectUniform));
+	for (size_t i = 0; i < uniforms.size(); ++i) {
+		graphics::writeBuffer(object_uniform_buffer, &uniforms[i], sizeof(ObjectUniform), object_uniform_stride * i);
 	}
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
 	ui_observer::state(scene, uniforms, time);
@@ -463,16 +529,22 @@ void render(const graphics::internal::FrameData& fd) {
 	vkCmdBindIndexBuffer(fd.command_buffer, index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout,
 	                        0, 1, &scene_descriptor_set, 0, nullptr);
-	for (size_t i = 0; i < descriptor_sets.size(); ++i) {
+	for (size_t i = 0; i < object_count; ++i) {
+		const auto& settings = scene.objects[i].textures;
+		const auto descriptor_set = texture_materials[static_cast<size_t>(settings.material_preset)].descriptor_set;
+		const uint32_t dynamic_offset = dynamicUniformOffset(i, static_cast<size_t>(object_uniform_stride));
+		const auto push = settings.pushConstants(texture_time);
 		vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		                        pipeline_layout, 1, 1, &descriptor_sets[i], 0, nullptr);
+		                        pipeline_layout, 1, 1, &descriptor_set, 1, &dynamic_offset);
+		vkCmdPushConstants(fd.command_buffer, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 		vkCmdDrawIndexed(fd.command_buffer, index_count, 1, 0, 0, 0);
 #ifdef LAB1_ENABLE_UI_TEST_HOOKS
-		ui_observer::draw({ reinterpret_cast<uintptr_t>(descriptor_sets[i]),
-		                    reinterpret_cast<uintptr_t>(object_uniform_buffers[i].handle),
+		const auto* uploaded = reinterpret_cast<const ObjectUniform*>(static_cast<const std::byte*>(object_uniform_buffer.mapped) + dynamic_offset);
+		ui_observer::draw({ reinterpret_cast<uintptr_t>(descriptor_set),
+		                    reinterpret_cast<uintptr_t>(object_uniform_buffer.handle),
 		                    reinterpret_cast<uintptr_t>(pipeline), reinterpret_cast<uintptr_t>(vertex_buffer.handle),
-		                    reinterpret_cast<uintptr_t>(index_buffer.handle), index_count,
-		                    *static_cast<const ObjectUniform*>(object_uniform_buffers[i].mapped) });
+		                    reinterpret_cast<uintptr_t>(index_buffer.handle), index_count, *uploaded,
+		                    dynamic_offset, static_cast<uint32_t>(object_uniform_stride), push });
 #endif
 	}
 	if (gizmo_triangle_count) {

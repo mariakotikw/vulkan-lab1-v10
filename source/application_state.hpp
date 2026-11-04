@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <vector>
 #include "lighting.hpp"
+#include "texture_material.hpp"
 
 namespace application {
 
@@ -55,6 +56,7 @@ struct ObjectState {
 	Transform initial_transform;
 	Animation animation;
 	Material material;
+	TextureSettings textures;
 
 	void resetTransform();
 	void sanitize();
@@ -71,7 +73,7 @@ struct SceneState {
 	DirectionalLight directional;
 	std::vector<PointLight> point_lights;
 	std::vector<SpotLight> spot_lights;
-	bool show_light_gizmos = true;
+	bool show_light_gizmos = false;
 	float gizmo_length = 2.5f;
 
 	SceneState();
